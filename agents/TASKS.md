@@ -31,6 +31,7 @@ Transitloom currently has:
 - implementation plan
 - initial Go module and code skeleton
 - partially built `agents/` workspace
+- role-specific config loading and validation scaffolding
 
 Transitloom does **not** yet have meaningful implementation of:
 - trust bootstrap
@@ -53,13 +54,17 @@ Finish the minimum `agents/` workspace baseline so coding agents can operate wit
 
 ---
 
-## Queued tasks
+## Recently completed
 
 ### T-0002 — config loading scaffolding
-**status:** queued  
+**status:** completed  
 **task file:** `agents/tasks/T-0002-config-loading-scaffolding.md`
 
-Implement object-model-aligned config loading and validation scaffolding for root, coordinator, and node roles.
+Implemented strict YAML config loading and validation scaffolding for root, coordinator, and node roles, plus `-config` startup wiring and tests.
+
+---
+
+## Queued tasks
 
 ### T-0003 — root/coordinator bootstrap scaffolding
 **status:** queued  
@@ -101,7 +106,7 @@ Right now, prioritize:
 
 1. finishing the `agents/` workspace baseline
 2. keeping specs, docs, and agent context consistent
-3. starting implementation with config/object-model scaffolding
+3. building on the completed config/object-model scaffolding with root/coordinator bootstrap work
 4. avoiding premature networking/transport complexity
 5. preserving the v1 boundaries already chosen
 

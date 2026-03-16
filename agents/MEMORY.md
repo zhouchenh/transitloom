@@ -210,6 +210,16 @@ These are not necessarily rejected forever, but they are outside v1 or should no
 
 ---
 
+## Durable configuration/bootstrap decisions
+
+- Stage-0 local config uses **YAML** with one role-specific file per process role
+- `internal/config` owns config structs, YAML loading, and startup validation scaffolding
+- YAML loading should remain **strict** about unknown fields so operator mistakes fail at startup
+- Node config must keep `binding` (local service target) separate from optional service `ingress` and shared `local_ingress` defaults
+- Config loading remains local intent only; it must not grow into a substitute for coordinator-managed distributed state
+
+---
+
 ## Durable decision philosophy
 
 When tradeoffs are unclear, Transitloom should generally prefer:

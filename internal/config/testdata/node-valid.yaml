@@ -1,0 +1,59 @@
+identity:
+  name: node-lab
+  label: Lab Node
+storage:
+  data_dir: /var/lib/transitloom/node
+control:
+  allowed_transports:
+    - quic
+    - tcp
+  preferred_transport: quic
+bootstrap_coordinators:
+  - label: coordinator-lab
+    coordinator_id_hint: coord-a
+    control_endpoints:
+      - coordinator.example.net:8443
+      - coordinator.example.net:9443
+    allowed_transports:
+      - quic
+      - tcp
+    preferred_transport: quic
+local_ingress:
+  default_mode: deterministic-range
+  range_start: 61000
+  range_end: 61999
+  loopback_address: 127.0.0.1
+services:
+  - name: wg-home
+    type: raw-udp
+    labels:
+      - wireguard
+    discoverable: true
+    binding:
+      address: 127.0.0.1
+      port: 51820
+    ingress:
+      mode: deterministic-range
+  - name: dns-cache
+    type: raw-udp
+    discoverable: false
+    binding:
+      address: 127.0.0.1
+      port: 5300
+discovery:
+  enabled: true
+  share_private_addresses: true
+  service_discoverable_by_default: true
+relay:
+  control_enabled: false
+  data_enabled: false
+  advertise: false
+observability:
+  logging:
+    level: info
+    format: text
+  metrics:
+    enabled: false
+  status:
+    enabled: true
+    listen: 127.0.0.1:9300

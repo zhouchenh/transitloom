@@ -1,0 +1,57 @@
+package config
+
+import "fmt"
+
+type NodeConfig struct {
+	Identity              IdentityMetadata             `yaml:"identity"`
+	Storage               StorageConfig                `yaml:"storage"`
+	Control               ControlPreferencesConfig     `yaml:"control"`
+	BootstrapCoordinators []BootstrapCoordinatorConfig `yaml:"bootstrap_coordinators"`
+	Services              []ServiceConfig              `yaml:"services"`
+	LocalIngress          LocalIngressPolicyConfig     `yaml:"local_ingress"`
+	Discovery             NodeDiscoveryConfig          `yaml:"discovery"`
+	Relay                 NodeRelayConfig              `yaml:"relay"`
+	Observability         ObservabilityConfig          `yaml:"observability"`
+}
+
+func (c NodeConfig) Validate() error {
+	var errs validationErrors
+
+	validateIdentity("identity", c.Identity, &errs)
+	validateStorage("storage", c.Storage, &errs)
+	validateControlPreferences("control", c.Control, &errs)
+	validateLocalIngressPolicy("local_ingress", c.LocalIngress, &errs)
+
+	if len(c.BootstrapCoordinators) == 0 {
+		errs.add("bootstrap_coordinators", "must contain at least one bootstrap coordinator")
+	}
+	for i, bootstrap := range c.BootstrapCoordinators {
+		validateBootstrapCoordinator(fmt.Sprintf("bootstrap_coordinators[%d]", i), bootstrap, &errs)
+	}
+
+	if len(c.Services) == 0 {
+		errs.add("services", "must contain at least one service")
+	}
+
+	serviceNames := make(map[string]struct{}, len(c.Services))
+	for i, service := range c.Services {
+		servicePath := fmt.Sprintf("services[%d]", i)
+		validateService(servicePath, service, c.LocalIngress, &errs)
+		if service.Name == "" {
+			continue
+		}
+		if _, exists := serviceNames[service.Name]; exists {
+			errs.add(servicePath+".name", "must be unique within the node config")
+			continue
+		}
+		serviceNames[service.Name] = struct{}{}
+	}
+
+	if c.Relay.MaxAssociations < 0 {
+		errs.add("relay.max_associations", "must be zero or greater")
+	}
+
+	validateObservability("observability", c.Observability, &errs)
+
+	return errs.err("node")
+}

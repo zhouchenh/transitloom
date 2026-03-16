@@ -106,7 +106,9 @@ At the time this file is written, the repository already contains:
 - `internal/status/`
 - `internal/transport/`
 
-The code is still placeholder-level. Real implementation has not meaningfully begun yet.
+The code is no longer entirely placeholder-level. The first real
+implementation slice now exists for role-specific config loading, validation,
+and startup scaffolding.
 
 ---
 
@@ -127,9 +129,12 @@ The code is still placeholder-level. Real implementation has not meaningfully be
 - repository and command/package skeleton exist
 - agent workspace baseline has been largely drafted
 - coding standards and reporting standards have dedicated agent files
+- role-specific YAML config structs exist for root, coordinator, and node
+- `internal/config` now loads YAML with strict known-field checking
+- root/coordinator/node startup now accepts `-config`, loads config, validates it, and starts placeholder runtime output
+- config validation tests and sample YAML fixtures now exist for root/coordinator/node
 
 ### What is not done yet
-- no real config loading
 - no real object model implementation in Go
 - no root/coordinator bootstrap logic
 - no PKI issuance logic
@@ -233,19 +238,22 @@ Near-term agent-workspace work includes:
 - updating `agents/CONTEXT.md`, `agents/MEMORY.md`, and task files as progress is made
 
 ### Implementation bootstrap
-The first real implementation work should begin with:
+The first real implementation work has begun with config loading scaffolding.
+The next implementation work should continue with:
 
-- object-model-aligned Go types where needed
-- config loading and validation scaffolding
-- root/coordinator/node startup scaffolding
+- root/coordinator bootstrap scaffolding
 - PKI/admission flow scaffolding after config loading is in place
 
 ### Current active implementation-oriented task
-The next practical implementation task is:
+The completed implementation task is:
 
 - `T-0002 — config loading scaffolding`
 
-That task should be treated as the first real code slice unless the task system is deliberately reprioritized.
+The next practical implementation task is:
+
+- `T-0003 — root/coordinator bootstrap scaffolding`
+
+That should remain the next implementation slice unless the task system is deliberately reprioritized.
 
 ---
 
@@ -357,7 +365,7 @@ This file should be updated when:
 
 ## Current summary
 
-Transitloom is currently a **well-specified but not-yet-implemented** project with:
+Transitloom is currently a **well-specified and now minimally implemented** project with:
 
 - strong v1 specs
 - a clear flagship use case
@@ -365,8 +373,11 @@ Transitloom is currently a **well-specified but not-yet-implemented** project wi
 - a repo/code skeleton
 - a mostly established `agents/` workspace
 - explicit coding and reporting standards
+- verified config loading/validation scaffolding
 - no substantive networking or trust code yet
 
-The correct next move is to keep the `agents/` workspace accurate and begin the first real implementation slice in the order already defined, starting with config loading scaffolding.
+The correct next move is to keep the `agents/` workspace accurate and continue
+the staged implementation order from the new config foundation, moving next
+into root/coordinator bootstrap scaffolding.
 
 ---

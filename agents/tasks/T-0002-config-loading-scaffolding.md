@@ -10,7 +10,7 @@ Config loading scaffolding
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 
@@ -236,5 +236,30 @@ When this task is complete, the next likely task should be:
 - `T-0003 — root/coordinator bootstrap scaffolding`
 
 unless implementation reveals that a narrower prerequisite task should be split out.
+
+---
+
+## Completion notes
+
+Completed on 2026-03-16.
+
+This task now has:
+
+- role-specific YAML config structs for root, coordinator, and node
+- strict YAML file loading with unknown-field rejection
+- focused validation logic with role/field-specific error messages
+- node service config that keeps service binding separate from optional local ingress settings
+- `-config` startup wiring for:
+  - `transitloom-root`
+  - `transitloom-coordinator`
+  - `transitloom-node`
+- table-driven validation tests plus valid sample config fixtures under `internal/config/testdata/`
+
+Verification completed for this task:
+
+- `go test ./...`
+- `go build ./...`
+- valid startup checks for root/coordinator/node commands
+- invalid startup checks for root/coordinator/node commands
 
 ---

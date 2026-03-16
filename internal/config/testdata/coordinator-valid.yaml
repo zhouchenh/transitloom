@@ -1,0 +1,46 @@
+identity:
+  name: coordinator-lab
+  label: Lab Coordinator
+storage:
+  data_dir: /var/lib/transitloom/coordinator
+control:
+  quic:
+    enabled: true
+    listen_endpoints:
+      - ":8443"
+  tcp:
+    enabled: true
+    listen_endpoints:
+      - ":9443"
+trust:
+  root_anchor_path: /var/lib/transitloom/coordinator/root.crt
+  intermediate_cert_path: /var/lib/transitloom/coordinator/intermediate.crt
+  intermediate_key_path: /var/lib/transitloom/coordinator/intermediate.key
+peers:
+  - label: coordinator-b
+    coordinator_id_hint: coord-b
+    control_endpoints:
+      - coord-b.example.net:8443
+    allowed_transports:
+      - quic
+      - tcp
+    preferred_transport: quic
+discovery:
+  discoverable: true
+  advertise_endpoints: true
+  participate_in_catalog: true
+relay:
+  control_enabled: true
+  data_enabled: false
+  listen_endpoints:
+    - ":9000"
+observability:
+  logging:
+    level: info
+    format: json
+  metrics:
+    enabled: true
+    listen: ":9100"
+  status:
+    enabled: true
+    listen: ":9200"

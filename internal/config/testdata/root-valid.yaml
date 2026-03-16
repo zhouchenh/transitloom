@@ -1,0 +1,23 @@
+identity:
+  name: root-lab
+  label: Lab Root
+storage:
+  data_dir: /var/lib/transitloom/root
+trust:
+  root_cert_path: /var/lib/transitloom/root/root.crt
+  root_key_path: /var/lib/transitloom/root/root.key
+  generate_key: true
+issuance:
+  default_intermediate_ttl: 720h
+admin:
+  enabled: true
+  listen: 127.0.0.1:9443
+observability:
+  logging:
+    level: info
+    format: text
+  metrics:
+    enabled: false
+  status:
+    enabled: true
+    listen: 127.0.0.1:9555
