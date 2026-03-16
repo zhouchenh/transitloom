@@ -431,6 +431,48 @@ If verification cannot be completed, say exactly why.
 
 ---
 
+## Commit and push policy
+
+Transitloom currently uses a staged repository workflow policy.
+
+### Before v1.0.0
+
+Before the first stable `v1.0.0` release, agents may:
+
+- commit directly
+- push directly to `master`
+
+but only when all of the following are true:
+
+- the change is coherent and task-aligned
+- the work has been verified appropriately
+- the end-of-run report is complete
+- relevant `agents/` files were updated
+- the commit message accurately describes the change
+- the repo is not being left in a confusing or partially broken state unless the checkpoint is intentional and clearly documented
+
+### At and after v1.0.0
+
+Starting at `v1.0.0`, agents must switch to a branch-based workflow:
+
+- work on task/feature branches
+- push branches, not direct pushes to `master`
+- merge through review workflow
+
+Agents must not assume the pre-`v1.0.0` direct-push policy still applies after that milestone.
+
+### What agents must not do
+
+Even before `v1.0.0`, agents must not commit or push when:
+
+- the change is unverified
+- unrelated changes are mixed together
+- the task is mid-flight and the checkpoint would confuse the next human/agent
+- there is unresolved architecture drift
+- the repo state contradicts the specs in a way that has not been intentionally documented
+
+---
+
 ## Commit discipline
 
 Prefer commits that are:

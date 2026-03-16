@@ -207,16 +207,40 @@ These are not necessarily rejected forever, but they are outside v1 or should no
 - Agents should update `agents/CONTEXT.md`, `agents/MEMORY.md`, `agents/TASKS.md`, and related files whenever meaningful progress or learning occurs
 - Small unrecorded facts are dangerous because context-limited agents may forget them later
 - If a future agent would benefit from knowing it, and it is not already clearly captured, it should be written down
+- Agents should follow `agents/CODING.md` for coding behavior
+- Agents should follow `agents/REPORTING.md` for end-of-run reporting
 
 ---
 
-## Durable configuration/bootstrap decisions
+## Durable repository workflow policy
 
-- Stage-0 local config uses **YAML** with one role-specific file per process role
-- `internal/config` owns config structs, YAML loading, and startup validation scaffolding
-- YAML loading should remain **strict** about unknown fields so operator mistakes fail at startup
-- Node config must keep `binding` (local service target) separate from optional service `ingress` and shared `local_ingress` defaults
-- Config loading remains local intent only; it must not grow into a substitute for coordinator-managed distributed state
+Transitloom uses a staged repository workflow policy.
+
+### Before v1.0.0
+Before the first stable `v1.0.0` release, the repository uses **Model A**:
+
+- agents may commit directly
+- agents may push directly to `master`
+
+but only when:
+- the change is coherent and task-aligned
+- verification has been run appropriately
+- reporting is complete
+- relevant `agents/` files have been updated
+- the commit message accurately reflects the work
+- the repo is not being left in a confusing or partially broken state unless the checkpoint is intentional and clearly documented
+
+### At and after v1.0.0
+Starting at `v1.0.0`, the repository must switch to **Model B**:
+
+- agents work on task/feature branches
+- agents push branches, not direct pushes to `master`
+- integration proceeds through review workflow
+
+Agents must not assume the pre-`v1.0.0` direct-push policy still applies after that milestone.
+
+### Durable rule
+This transition from Model A to Model B is a deliberate project policy, not a casual preference.
 
 ---
 
