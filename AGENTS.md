@@ -10,7 +10,7 @@ Transitloom is a coordinator-managed overlay mesh transport platform focused fir
 - practical multi-WAN aggregation
 - WireGuard-over-mesh as the flagship v1 use case
 
-Agents working in this repository must optimize for **correctness, architectural consistency, maintainability, and end-to-end usefulness**, not just local code changes.
+Agents working in this repository must optimize for **correctness, architectural consistency, maintainability, measurability, and end-to-end usefulness**, not just local code changes.
 
 This file defines the required working model for agents.
 
@@ -26,6 +26,8 @@ Before making changes, read these files in order:
 4. `agents/CONTEXT.md`
 5. `agents/MEMORY.md`
 6. `agents/TASKS.md`
+7. `agents/CODING.md`
+8. `agents/REPORTING.md`
 
 Then read any task files referenced from:
 
@@ -36,6 +38,8 @@ If a task touches architecture or invariants, also read the relevant files under
 - `spec/`
 
 Do not skip the reading order unless the task is trivial and clearly isolated.
+
+`agents/README.md` is a useful overview file, especially for humans, but the files above are the operational minimum.
 
 ---
 
@@ -156,6 +160,8 @@ At minimum, where applicable:
 
 Do not claim success without verification.
 
+Follow `agents/REPORTING.md` when the run ends.
+
 ---
 
 ## Documentation and spec discipline
@@ -189,6 +195,10 @@ Use these sources in roughly this order:
 - `agents/CONTEXT.md`
 - `agents/TASKS.md`
 - `agents/tasks/`
+
+### Coding and reporting standards
+- `agents/CODING.md`
+- `agents/REPORTING.md`
 
 ### Supporting human-facing explanation
 - `docs/`
@@ -373,9 +383,28 @@ Then update them before considering the work complete.
 
 ---
 
+## Coding and reporting requirements
+
+Agents must follow:
+
+- `agents/CODING.md` for coding practices
+- `agents/REPORTING.md` for end-of-run reporting
+
+These are part of the required workflow, not optional references.
+
+In particular:
+
+- write tests for non-trivial behavior
+- run verification before claiming success
+- add benchmarks when performance-relevant code is introduced and measurement is useful
+- write enough comments to preserve non-obvious intent
+- report clearly what changed, what was verified, what is incomplete, and what the next step is
+
+---
+
 ## Coding style expectations
 
-Until a more detailed coding standard exists:
+Until a more detailed coding standard exists, and in addition to `agents/CODING.md`:
 
 - keep code straightforward and readable
 - favor explicitness over hidden magic

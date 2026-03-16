@@ -54,6 +54,8 @@ Read these files in this order before doing substantial work:
 4. `agents/CONTEXT.md`
 5. `agents/MEMORY.md`
 6. `agents/TASKS.md`
+7. `agents/CODING.md`
+8. `agents/REPORTING.md`
 
 Then read any task files referenced from:
 
@@ -64,6 +66,8 @@ Then read the relevant specs under:
 - `spec/`
 
 Do not skip directly into code unless the task is trivial and clearly isolated.
+
+`agents/README.md` is useful for orientation, especially for humans, but the list above is the operational minimum.
 
 ---
 
@@ -95,6 +99,19 @@ At the time this file is being written, the repository already contains:
 - `cmd/transitloom-node`
 - `cmd/tlctl`
 - initial `internal/` package skeleton
+
+### Agent workspace baseline
+- `AGENTS.md`
+- `agents/README.md`
+- `agents/BOOTSTRAP.md`
+- `agents/IDENTITY.md`
+- `agents/SOUL.md`
+- `agents/CONTEXT.md`
+- `agents/MEMORY.md`
+- `agents/TASKS.md`
+- `agents/CODING.md`
+- `agents/REPORTING.md`
+- initial task files under `agents/tasks/`
 
 That means the project is **past brainstorming** and is now in the **implementation bootstrap phase**.
 
@@ -273,6 +290,31 @@ Use them like this:
 - `spec/implementation-plan-v1.md`
 
 If code or a task seems to conflict with specs, do not guess. Stop and resolve the contradiction deliberately.
+
+---
+
+## How to use the agent standards files
+
+Use these files actively while working:
+
+### `agents/CODING.md`
+Use this for:
+- coding style expectations
+- testing rules
+- benchmark rules
+- commenting standards
+- verification requirements
+- package-boundary discipline
+
+### `agents/REPORTING.md`
+Use this at the end of the run for:
+- outcome reporting
+- explicit complete/partial/blocked status
+- verification reporting
+- incompleteness reporting
+- next-step reporting
+
+Do not treat either file as optional.
 
 ---
 

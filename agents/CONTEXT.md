@@ -22,6 +22,7 @@ That means:
 - the initial v1 spec set has been drafted
 - the initial docs set has been drafted
 - the initial Go module and repository skeleton have been created
+- the `agents/` workspace baseline is being established
 - the next step is to begin the first disciplined implementation slice
 
 The project is **not** yet in feature-development mode for advanced networking behavior.
@@ -62,9 +63,26 @@ At the time this file is written, the repository already contains:
 
 ### Agent workspace files drafted so far
 - `AGENTS.md`
+- `agents/README.md`
 - `agents/BOOTSTRAP.md`
 - `agents/IDENTITY.md`
 - `agents/SOUL.md`
+- `agents/CONTEXT.md`
+- `agents/MEMORY.md`
+- `agents/TASKS.md`
+- `agents/CODING.md`
+- `agents/REPORTING.md`
+
+### Agent task files drafted so far
+- `agents/tasks/T-0001-agents-workspace-baseline.md`
+- `agents/tasks/T-0002-config-loading-scaffolding.md`
+- `agents/tasks/T-0003-root-coordinator-bootstrap.md`
+
+### Agent workspace directories
+- `agents/tasks/`
+- `agents/context/`
+- `agents/memory/`
+- `agents/logs/`
 
 ### Code skeleton
 - `go.mod`
@@ -103,9 +121,12 @@ The code is still placeholder-level. Real implementation has not meaningfully be
 - service model is documented
 - PKI/admission model is documented
 - WireGuard-over-mesh model is documented
+- object model is documented
+- config model is documented
 - implementation plan is drafted
-- config model is drafted
 - repository and command/package skeleton exist
+- agent workspace baseline has been largely drafted
+- coding standards and reporting standards have dedicated agent files
 
 ### What is not done yet
 - no real config loading
@@ -178,9 +199,10 @@ The current implementation priorities, in order, are:
 
 1. preserve architectural consistency
 2. preserve object model boundaries
-3. start implementation in the order defined by `spec/implementation-plan-v1.md`
-4. avoid premature feature expansion
-5. prove the first real vertical slice as early as possible
+3. finish the usable `agents/` workspace baseline
+4. start implementation in the order defined by `spec/implementation-plan-v1.md`
+5. avoid premature feature expansion
+6. prove the first real vertical slice as early as possible
 
 The intended implementation order is:
 
@@ -201,24 +223,29 @@ The intended implementation order is:
 
 The immediate next tasks are:
 
-### Agent workspace completion
-The `agents/` workspace is still incomplete.
+### Agent workspace completion and normalization
+The `agents/` workspace now has a solid baseline, but it should continue to be normalized and kept consistent as work begins.
 
-Files that should exist soon:
-- `agents/MEMORY.md`
-- `agents/TASKS.md`
-- `agents/README.md`
-- `agents/tasks/` initial task files
-- `agents/context/` initial deeper context files if needed
-- `agents/memory/` initial durable memory shards if needed
+Near-term agent-workspace work includes:
+- keeping `AGENTS.md` and the `agents/` files consistent
+- ensuring `agents/TASKS.md` stays a compact index
+- using `agents/tasks/*.md` for detailed task tracking
+- updating `agents/CONTEXT.md`, `agents/MEMORY.md`, and task files as progress is made
 
 ### Implementation bootstrap
-After the agent workspace baseline is complete, the first real implementation work should begin with:
+The first real implementation work should begin with:
 
-- object-model-aligned Go types
+- object-model-aligned Go types where needed
 - config loading and validation scaffolding
 - root/coordinator/node startup scaffolding
-- PKI/admission flow scaffolding
+- PKI/admission flow scaffolding after config loading is in place
+
+### Current active implementation-oriented task
+The next practical implementation task is:
+
+- `T-0002 — config loading scaffolding`
+
+That task should be treated as the first real code slice unless the task system is deliberately reprioritized.
 
 ---
 
@@ -241,7 +268,7 @@ These milestones should guide what gets built first.
 The biggest current risks are architectural and sequencing risks, not low-level code bugs.
 
 ### Risk 1: architecture drift
-Now that code skeleton exists, it is easy for implementation to drift away from the specs if agents start coding from intuition instead of reading.
+Now that code skeleton and agent workspace exist, it is easy for implementation to drift away from the specs if agents start coding from intuition instead of reading.
 
 ### Risk 2: collapsing important concepts
 The following distinctions are easy to accidentally collapse:
@@ -274,6 +301,9 @@ If coding starts with:
 
 before the trust/control/service/direct-path foundation exists, progress will look larger than it really is.
 
+### Risk 5: poor continuity discipline
+Because agents are context-limited, failing to update the `agents/` workspace when meaningful progress or learning occurs is a real project risk, not merely a documentation lapse.
+
 ---
 
 ## Current practical guidance
@@ -287,6 +317,8 @@ At this stage, agents should optimize for:
 - minimal viable vertical slices
 - good status/observability scaffolding
 - recording progress in `agents/`
+- honest reporting using `agents/REPORTING.md`
+- coding discipline using `agents/CODING.md`
 
 Agents should **not** optimize for:
 - broad feature counts
@@ -296,13 +328,27 @@ Agents should **not** optimize for:
 
 ---
 
+## Current task-system state
+
+The task system is intended to work like this:
+
+- `agents/TASKS.md` = compact task index
+- `agents/tasks/*.md` = detailed task files
+- `agents/REPORTING.md` = end-of-run reporting standard
+- `agents/CODING.md` = coding standards
+
+This should remain the working model unless deliberately changed.
+
+---
+
 ## What should be updated next
 
 This file should be updated when:
 
-- the agent workspace baseline is completed
+- the agent workspace baseline is fully stabilized
 - the first implementation package content becomes real
-- the project moves from bootstrap into actual trust/control implementation
+- the project moves from bootstrap into actual config/trust/control implementation
+- the active task changes materially
 - the first milestone changes
 - a serious blocker appears
 - the immediate next tasks change
@@ -317,9 +363,10 @@ Transitloom is currently a **well-specified but not-yet-implemented** project wi
 - a clear flagship use case
 - a clear implementation order
 - a repo/code skeleton
-- an unfinished agent workspace
+- a mostly established `agents/` workspace
+- explicit coding and reporting standards
 - no substantive networking or trust code yet
 
-The correct next move is to finish the core `agents/` files and then start the first real implementation slice in the order already defined.
+The correct next move is to keep the `agents/` workspace accurate and begin the first real implementation slice in the order already defined, starting with config loading scaffolding.
 
 ---

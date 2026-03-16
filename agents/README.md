@@ -11,10 +11,12 @@ Transitloom is already large enough in scope that agents should not rely on shor
 - current implementation context
 - durable project memory
 - active task tracking
+- coding standards
+- reporting standards
 - deeper task/context/memory files
 - handoff and investigation notes
 
-Think of this directory as the **persistent working memory** for the project.
+Think of this directory as the **persistent working memory and operating layer** for the project.
 
 ---
 
@@ -29,6 +31,8 @@ If you are a coding agent, start with:
 5. `CONTEXT.md`
 6. `MEMORY.md`
 7. `TASKS.md`
+8. `CODING.md`
+9. `REPORTING.md`
 
 Then read any task files under:
 
@@ -37,6 +41,9 @@ Then read any task files under:
 And, when relevant, the authoritative specs under:
 
 - `../spec/`
+
+`../AGENTS.md` is the top-level operating contract.  
+This directory is the repo-local context, memory, task, coding, and reporting workspace.
 
 ---
 
@@ -101,6 +108,31 @@ Use this to see:
 - what was recently completed
 
 Detailed task definitions should live under `tasks/`, not grow unbounded in `TASKS.md`.
+
+### `CODING.md`
+Coding standards and implementation discipline.
+
+Use this to understand:
+- coding expectations
+- testing expectations
+- benchmark expectations
+- commenting standards
+- verification rules
+- package-boundary discipline
+
+This file helps prevent task prompts from having to restate the same coding rules repeatedly.
+
+### `REPORTING.md`
+End-of-run reporting standard.
+
+Use this to understand:
+- how to report what changed
+- how to distinguish complete vs partial vs blocked work
+- how to describe verification honestly
+- what must be recorded at the end of a run
+- how to make handoff and continuation easier for future agents
+
+This file makes reporting reviewable and trustworthy.
 
 ---
 
@@ -207,12 +239,12 @@ to:
 
 - disciplined first implementation
 
-without letting architecture drift, task continuity break, or important decisions disappear between sessions.
+without letting architecture drift, task continuity break, coding standards become inconsistent, or important decisions disappear between sessions.
 
 ---
 
 ## One-sentence summary
 
-The `agents/` directory is the persistent operational memory and task-navigation layer for coding agents working on Transitloom.
+The `agents/` directory is the persistent operational memory, task-navigation layer, coding standard layer, and reporting layer for coding agents working on Transitloom.
 
 ---
