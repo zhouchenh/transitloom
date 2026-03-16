@@ -44,6 +44,21 @@ Do not imply verification that did not happen.
 
 ---
 
+## Commit and push expectation
+
+Before the first stable `v1.0.0` release, a completed and verified task run should normally end with:
+
+- a coherent commit
+- a push to `master`
+
+unless:
+- the task explicitly says not to do that
+- the run is partial or blocked
+- the repo would be left in a confusing intermediate state
+- a real blocker prevents commit or push
+
+At and after `v1.0.0`, this changes to the branch-based workflow defined in `AGENTS.md`.
+
 ## Required end-of-run report structure
 
 Use this structure unless a task explicitly requires a different format.

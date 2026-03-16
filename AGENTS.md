@@ -437,12 +437,7 @@ Transitloom currently uses a staged repository workflow policy.
 
 ### Before v1.0.0
 
-Before the first stable `v1.0.0` release, agents may:
-
-- commit directly
-- push directly to `master`
-
-but only when all of the following are true:
+Before the first stable `v1.0.0` release, agents should commit directly and push directly to `master` by default when a task run is completed and all of the following are true:
 
 - the change is coherent and task-aligned
 - the work has been verified appropriately
@@ -450,6 +445,8 @@ but only when all of the following are true:
 - relevant `agents/` files were updated
 - the commit message accurately describes the change
 - the repo is not being left in a confusing or partially broken state unless the checkpoint is intentional and clearly documented
+
+Before `v1.0.0`, commit-and-push is the normal expected end state for a completed, verified, well-reported task run unless the task explicitly says otherwise or a real blocker prevents it.
 
 ### At and after v1.0.0
 
