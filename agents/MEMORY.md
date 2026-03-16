@@ -130,6 +130,8 @@ These distinctions are important and must not be casually collapsed.
 - Multiple WireGuard services per node are supported
 - Stable local ingress bindings matter for the flagship use case
 - WireGuard should remain generic in the core model
+- Bootstrap-phase service registration stores requested local ingress intent separately from the service binding/local target; it does not allocate a `LocalIngressBinding`
+- Bootstrap-only service registration does not imply authenticated service ownership, service discovery completeness, or association authorization
 
 ---
 

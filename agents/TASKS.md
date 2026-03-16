@@ -40,7 +40,7 @@ Transitloom does **not** yet have meaningful implementation of:
 - node certificate issuance
 - admission-token issuance or refresh
 - coordinator-side admission-token validation
-- service registration
+- service discovery
 - association handling
 - raw UDP carriage
 - WireGuard-over-mesh runtime behavior
@@ -51,7 +51,7 @@ Transitloom does **not** yet have meaningful implementation of:
 
 No implementation task is currently marked active.
 
-The next task to start is `T-0006 — service registration basics`.
+The next task to start is `T-0007 — association basics`.
 
 ---
 
@@ -84,11 +84,21 @@ the coordinator TCP listener, with explicit readiness snapshots, structured
 accept/reject results, clear placeholder reporting, and focused listener/client
 tests.
 
+### T-0006 — service registration basics
+**status:** completed
+**task file:** `agents/tasks/T-0006-service-registration-basics.md`
+
+Implemented bootstrap-only service registration over the existing coordinator
+TCP listener, with explicit service declaration mapping, a placeholder
+coordinator-side in-memory registry, per-service accept/reject results, clear
+separation between service binding/local target and requested local ingress
+intent, and focused node/coordinator/service tests.
+
 ---
 
 ## Queued tasks
 
-The next implementation task should be `T-0006 — service registration basics`.
+The next implementation task should be `T-0007 — association basics`.
 
 ---
 
@@ -123,7 +133,7 @@ The main risk right now is **architecture drift during early implementation**, n
 Right now, prioritize:
 
 1. keeping specs, docs, and agent context consistent
-2. building on the completed config, trust-bootstrap, node bootstrap, and bootstrap-only control-session scaffolding with service-registration work
+2. building on the completed config, trust-bootstrap, node bootstrap, bootstrap-only control-session, and service-registration scaffolding with association work
 3. avoiding premature networking/transport complexity
 4. preserving the v1 boundaries already chosen
 5. continuing `agents/` workspace maintenance as implementation progresses

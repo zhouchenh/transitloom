@@ -55,5 +55,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Printf("transitloom-node bootstrap control session reached coordinator %q; final authenticated control sessions, enrollment, and token refresh are still not implemented", session.Response.CoordinatorName)
+	registrationCtx, registrationCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer registrationCancel()
+
+	registration, err := node.AttemptServiceRegistration(registrationCtx, cfg, bootstrap, session)
+	for _, line := range registration.ReportLines() {
+		log.Print(line)
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
+	if !registration.Response.AllRegistered() {
+		log.Printf("transitloom-node bootstrap service registration did not fully succeed with coordinator %q", registration.Response.CoordinatorName)
+		os.Exit(1)
+	}
+
+	log.Printf("transitloom-node bootstrap control and service registration reached coordinator %q; authenticated control sessions, discovery, and associations are still not implemented", registration.Response.CoordinatorName)
 }

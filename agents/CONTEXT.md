@@ -110,8 +110,9 @@ At the time this file is written, the repository already contains:
 
 The code is no longer entirely placeholder-level. The first real
 implementation slices now exist for role-specific config loading, trust
-bootstrap, node identity/admission bootstrap inspection, and a first
-bootstrap-only node-to-coordinator control-session path.
+bootstrap, node identity/admission bootstrap inspection, a bootstrap-only
+node-to-coordinator control-session path, and a first bootstrap-only service
+registration path.
 
 ---
 
@@ -152,6 +153,12 @@ bootstrap-only node-to-coordinator control-session path.
 - `transitloom-coordinator` now starts a minimal bootstrap control listener and stays running until signaled
 - `transitloom-node` now attempts the bootstrap control session after local readiness inspection and exits clearly on success vs rejection/failure
 - focused control-session tests now cover coordinator acceptance/rejection plus node-side endpoint fallback and structured rejection handling
+- `internal/service` now maps configured services into explicit registration declarations with separate service identity, service binding/local target, and requested local-ingress intent
+- `internal/controlplane` now contains a bootstrap-only service-registration request/response model with per-service results and explicit placeholder semantics
+- `internal/coordinator` now exposes a bootstrap-only service-registration endpoint on the same minimal TCP listener, validates service declarations individually, and stores bootstrap-only placeholder service records in an in-memory registry
+- `internal/node` now builds service-registration requests from configured services and submits them to the coordinator endpoint that accepted the bootstrap control session
+- `transitloom-node` now attempts bootstrap-only service registration after bootstrap control-session success and exits clearly on full success vs partial or failed registration
+- focused service-registration tests now cover request mapping, coordinator-side stored registry state, partial rejection of invalid service declarations, and node-side registration attempts
 
 ### What is not done yet
 - no real object model implementation in Go
@@ -163,7 +170,7 @@ bootstrap-only node-to-coordinator control-session path.
 - no final QUIC + TLS 1.3 mTLS control transport implementation
 - no final TCP + TLS 1.3 fallback transport implementation
 - no live certificate-chain validation during sessions
-- no service registration implementation
+- no service discovery implementation
 - no association implementation
 - no raw UDP data path
 - no WireGuard-over-mesh working slice
@@ -263,8 +270,8 @@ Near-term agent-workspace work includes:
 The first real implementation work has begun with config loading scaffolding, trust bootstrap scaffolding, node identity/admission bootstrap scaffolding, and a bootstrap-only node-to-coordinator control-session path.
 The next implementation work should continue with:
 
-- service registration scaffolding built on the new control-session foundation
-- live enrollment, certificate issuance, and admission-token refresh work after service registration or as a deliberately split prerequisite if needed
+- association basics built on the new service-registration foundation
+- live enrollment, certificate issuance, and admission-token refresh work after association basics or as a deliberately split prerequisite if needed
 
 ### Current active implementation-oriented task
 The completed implementation tasks are:
@@ -273,10 +280,11 @@ The completed implementation tasks are:
 - `T-0003 — root/coordinator bootstrap scaffolding`
 - `T-0004 — node identity and admission-token scaffolding`
 - `T-0005 — minimal node-to-coordinator control session`
+- `T-0006 — service registration basics`
 
 The next practical implementation task is:
 
-- `T-0006 — service registration basics`
+- `T-0007 — association basics`
 
 That should remain the next implementation slice unless the task system is deliberately reprioritized.
 
