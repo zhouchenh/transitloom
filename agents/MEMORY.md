@@ -77,6 +77,10 @@ These decisions are settled unless deliberately changed through specs.
 - Trust-material file references resolve relative to `storage.data_dir` when config uses local relative paths
 - Root bootstrap may treat missing root cert/key material as coherent only when both are absent and `trust.generate_key=true`
 - Coordinator bootstrap requires a present root trust anchor; coordinator intermediate cert/key may both be absent as an explicit awaiting-issuance bootstrap state, but partial presence is invalid
+- Node bootstrap keeps persisted identity references under `node_identity` and cached current admission-token references under `admission`; those paths also resolve relative to `storage.data_dir` when configured as local relative paths
+- Node bootstrap treats `private_key present + certificate absent` as a coherent awaiting-certificate state for later enrollment work, but not as identity readiness
+- A cached current admission token without ready node identity material is an invalid local bootstrap combination
+- The cached current admission-token placeholder file is local JSON metadata (`token_id`, `node_id`, `issuer_coordinator_id`, `issued_at`, `expires_at`) and is only a readiness signal, not authoritative admission truth
 
 ---
 

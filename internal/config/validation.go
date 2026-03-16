@@ -45,6 +45,21 @@ func validateStorage(prefix string, storage StorageConfig, errs *validationError
 	}
 }
 
+func validateNodeIdentity(prefix string, identity NodeIdentityConfig, errs *validationErrors) {
+	if strings.TrimSpace(identity.CertificatePath) == "" {
+		errs.add(prefix+".certificate_path", "must be set")
+	}
+	if strings.TrimSpace(identity.PrivateKeyPath) == "" {
+		errs.add(prefix+".private_key_path", "must be set")
+	}
+}
+
+func validateNodeAdmission(prefix string, admission NodeAdmissionConfig, errs *validationErrors) {
+	if strings.TrimSpace(admission.CurrentTokenPath) == "" {
+		errs.add(prefix+".current_token_path", "must be set")
+	}
+}
+
 func validateLogging(prefix string, logging LoggingConfig, errs *validationErrors) {
 	switch strings.TrimSpace(logging.Level) {
 	case "", "debug", "info", "warn", "error":

@@ -5,6 +5,8 @@ import "fmt"
 type NodeConfig struct {
 	Identity              IdentityMetadata             `yaml:"identity"`
 	Storage               StorageConfig                `yaml:"storage"`
+	NodeIdentity          NodeIdentityConfig           `yaml:"node_identity"`
+	Admission             NodeAdmissionConfig          `yaml:"admission"`
 	Control               ControlPreferencesConfig     `yaml:"control"`
 	BootstrapCoordinators []BootstrapCoordinatorConfig `yaml:"bootstrap_coordinators"`
 	Services              []ServiceConfig              `yaml:"services"`
@@ -14,11 +16,22 @@ type NodeConfig struct {
 	Observability         ObservabilityConfig          `yaml:"observability"`
 }
 
+type NodeIdentityConfig struct {
+	CertificatePath string `yaml:"certificate_path"`
+	PrivateKeyPath  string `yaml:"private_key_path"`
+}
+
+type NodeAdmissionConfig struct {
+	CurrentTokenPath string `yaml:"current_token_path"`
+}
+
 func (c NodeConfig) Validate() error {
 	var errs validationErrors
 
 	validateIdentity("identity", c.Identity, &errs)
 	validateStorage("storage", c.Storage, &errs)
+	validateNodeIdentity("node_identity", c.NodeIdentity, &errs)
+	validateNodeAdmission("admission", c.Admission, &errs)
 	validateControlPreferences("control", c.Control, &errs)
 	validateLocalIngressPolicy("local_ingress", c.LocalIngress, &errs)
 

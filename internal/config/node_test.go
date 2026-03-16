@@ -35,6 +35,11 @@ identity:
   name: node-a
 storage:
   data_dir: /var/lib/transitloom/node
+node_identity:
+  certificate_path: identity/current.crt
+  private_key_path: identity/current.key
+admission:
+  current_token_path: admission/current-token.json
 services:
   - name: wg0
     type: raw-udp
@@ -53,6 +58,11 @@ identity:
   name: node-a
 storage:
   data_dir: /var/lib/transitloom/node
+node_identity:
+  certificate_path: identity/current.crt
+  private_key_path: identity/current.key
+admission:
+  current_token_path: admission/current-token.json
 bootstrap_coordinators:
   - label: coord-a
     control_endpoints:
@@ -76,6 +86,30 @@ services:
 			wantText: []string{
 				"services[0].ingress.range_start: must be set on the service or local_ingress when ingress.mode is deterministic-range",
 				"services[1].name: must be unique within the node config",
+			},
+		},
+		{
+			name: "identity and admission paths required",
+			yaml: `
+identity:
+  name: node-a
+storage:
+  data_dir: /var/lib/transitloom/node
+bootstrap_coordinators:
+  - label: coord-a
+    control_endpoints:
+      - coord-a.example.net:8443
+services:
+  - name: wg0
+    type: raw-udp
+    binding:
+      address: 127.0.0.1
+      port: 51820
+`,
+			wantText: []string{
+				"node_identity.certificate_path: must be set",
+				"node_identity.private_key_path: must be set",
+				"admission.current_token_path: must be set",
 			},
 		},
 	}

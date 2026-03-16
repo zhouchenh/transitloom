@@ -32,10 +32,14 @@ Transitloom currently has:
 - initial Go module and code skeleton
 - partially built `agents/` workspace
 - role-specific config loading and validation scaffolding
+- root/coordinator trust-bootstrap inspection scaffolding
+- node identity and admission bootstrap inspection scaffolding
 
 Transitloom does **not** yet have meaningful implementation of:
-- trust bootstrap
-- admission-token flow
+- node enrollment
+- node certificate issuance
+- admission-token issuance or refresh
+- coordinator-side admission-token validation
 - control sessions
 - service registration
 - association handling
@@ -68,11 +72,17 @@ Implemented strict YAML config loading and validation scaffolding for root, coor
 
 Implemented explicit root/coordinator trust-bootstrap inspection, trust-material presence checks, role-specific startup reporting, and tests for valid and invalid bootstrap states.
 
+### T-0004 — node identity and admission-token scaffolding
+**status:** completed
+**task file:** `agents/tasks/T-0004-node-identity-and-admission-token-scaffolding.md`
+
+Implemented explicit node-identity and cached-admission-token bootstrap inspection, distinct persisted-state config sections, `transitloom-node` readiness reporting, and tests for valid and invalid local state combinations.
+
 ---
 
 ## Queued tasks
 
-The next implementation task should be `T-0004 — node identity and admission-token scaffolding` once its task file is drafted.
+The next implementation task should be `T-0005 — minimal node-to-coordinator control session`.
 
 ---
 
@@ -108,7 +118,7 @@ Right now, prioritize:
 
 1. finishing the `agents/` workspace baseline
 2. keeping specs, docs, and agent context consistent
-3. building on the completed config and trust-bootstrap scaffolding with node identity/admission work
+3. building on the completed config, trust-bootstrap, and node identity/admission scaffolding with minimal control-session work
 4. avoiding premature networking/transport complexity
 5. preserving the v1 boundaries already chosen
 

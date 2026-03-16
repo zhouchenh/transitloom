@@ -3,6 +3,11 @@ identity:
   label: Lab Node
 storage:
   data_dir: /var/lib/transitloom/node
+node_identity:
+  certificate_path: identity/current.crt
+  private_key_path: identity/current.key
+admission:
+  current_token_path: admission/current-token.json
 control:
   allowed_transports:
     - quic

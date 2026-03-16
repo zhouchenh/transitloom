@@ -4,8 +4,10 @@ import (
 	"flag"
 	"log"
 	"os"
+	"time"
 
 	"github.com/zhouchenh/transitloom/internal/config"
+	"github.com/zhouchenh/transitloom/internal/node"
 )
 
 func main() {
@@ -27,6 +29,14 @@ func main() {
 		log.Fatal(err)
 	}
 
+	bootstrap, err := node.InspectBootstrap(cfg, time.Now().UTC())
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	log.Printf("transitloom-node config validated for %q using %s", cfg.Identity.Name, *configPath)
-	log.Printf("transitloom-node placeholder runtime started; control sessions and service carriage are not implemented yet")
+	for _, line := range bootstrap.ReportLines() {
+		log.Print(line)
+	}
+	log.Printf("transitloom-node placeholder runtime started; node identity and admission bootstrap are scaffolded, but enrollment, token refresh, and control sessions are not implemented yet")
 }

@@ -77,6 +77,7 @@ At the time this file is written, the repository already contains:
 - `agents/tasks/T-0001-agents-workspace-baseline.md`
 - `agents/tasks/T-0002-config-loading-scaffolding.md`
 - `agents/tasks/T-0003-root-coordinator-bootstrap.md`
+- `agents/tasks/T-0004-node-identity-and-admission-token-scaffolding.md`
 
 ### Agent workspace directories
 - `agents/tasks/`
@@ -107,8 +108,9 @@ At the time this file is written, the repository already contains:
 - `internal/transport/`
 
 The code is no longer entirely placeholder-level. The first real
-implementation slice now exists for role-specific config loading, validation,
-and startup scaffolding.
+implementation slices now exist for role-specific config loading, trust
+bootstrap, node identity/admission bootstrap inspection, and startup
+scaffolding.
 
 ---
 
@@ -137,12 +139,20 @@ and startup scaffolding.
 - root trust-material references now resolve relative to `storage.data_dir` when configured as local relative paths
 - root startup now reports bootstrap state and rejects inconsistent or missing root material unless `trust.generate_key=true`
 - coordinator startup now requires a present root trust anchor, reports coordinator intermediate bootstrap state, and rejects partial intermediate material
+- node config now carries distinct `node_identity` and `admission` sections for persisted local identity material and cached current admission-token state
+- `internal/identity` now inspects node certificate/key presence and distinguishes bootstrap-required, awaiting-certificate, and ready identity states
+- `internal/admission` now inspects cached current admission-token metadata and distinguishes missing, usable, and expired local token state without treating that cache as authoritative truth
+- `internal/node` now combines identity and admission inspection into explicit bootstrap readiness reporting for `transitloom-node`
+- `transitloom-node` now rejects the incoherent local state where a cached current admission token exists but ready node identity material does not
+- identity/admission bootstrap tests now cover valid and invalid local state combinations plus command-level startup verification
 
 ### What is not done yet
 - no real object model implementation in Go
 - no PKI issuance logic
-- no admission token logic
+- no node certificate issuance
 - no node enrollment flow
+- no live admission-token issuance or refresh logic
+- no coordinator-side admission-token validation logic
 - no control-plane transport implementation
 - no service registration implementation
 - no association implementation
@@ -241,21 +251,22 @@ Near-term agent-workspace work includes:
 - updating `agents/CONTEXT.md`, `agents/MEMORY.md`, and task files as progress is made
 
 ### Implementation bootstrap
-The first real implementation work has begun with config loading scaffolding and trust bootstrap scaffolding.
+The first real implementation work has begun with config loading scaffolding, trust bootstrap scaffolding, and node identity/admission bootstrap scaffolding.
 The next implementation work should continue with:
 
-- node identity and admission-token scaffolding
-- PKI/admission flow scaffolding after the new trust bootstrap path
+- minimal node-to-coordinator control session scaffolding built on the new local identity/admission boundaries
+- live enrollment, certificate issuance, and admission-token refresh work after the control-session shape or as a deliberately split prerequisite if needed
 
 ### Current active implementation-oriented task
 The completed implementation tasks are:
 
 - `T-0002 — config loading scaffolding`
 - `T-0003 — root/coordinator bootstrap scaffolding`
+- `T-0004 — node identity and admission-token scaffolding`
 
 The next practical implementation task is:
 
-- `T-0004 — node identity and admission-token scaffolding`
+- `T-0005 — minimal node-to-coordinator control session`
 
 That should remain the next implementation slice unless the task system is deliberately reprioritized.
 
@@ -379,10 +390,12 @@ Transitloom is currently a **well-specified and now minimally implemented** proj
 - explicit coding and reporting standards
 - verified config loading/validation scaffolding
 - verified root/coordinator trust bootstrap validation and placeholder reporting
+- verified node identity and admission bootstrap validation, readiness reporting, and invalid-local-state rejection
 - no substantive networking, issuance, or control-session code yet
 
 The correct next move is to keep the `agents/` workspace accurate and continue
-the staged implementation order from the new config and trust-bootstrap
-foundation, moving next into node identity and admission-token scaffolding.
+the staged implementation order from the new config, trust-bootstrap, and
+node-bootstrap foundation, moving next into minimal node-to-coordinator control
+session scaffolding or a deliberately split prerequisite if that proves safer.
 
 ---
