@@ -78,6 +78,7 @@ At the time this file is written, the repository already contains:
 - `agents/tasks/T-0002-config-loading-scaffolding.md`
 - `agents/tasks/T-0003-root-coordinator-bootstrap.md`
 - `agents/tasks/T-0004-node-identity-and-admission-token-scaffolding.md`
+- `agents/tasks/T-0005-minimal-node-to-coordinator-control-session.md`
 
 ### Agent workspace directories
 - `agents/tasks/`
@@ -109,8 +110,8 @@ At the time this file is written, the repository already contains:
 
 The code is no longer entirely placeholder-level. The first real
 implementation slices now exist for role-specific config loading, trust
-bootstrap, node identity/admission bootstrap inspection, and startup
-scaffolding.
+bootstrap, node identity/admission bootstrap inspection, and a first
+bootstrap-only node-to-coordinator control-session path.
 
 ---
 
@@ -145,6 +146,12 @@ scaffolding.
 - `internal/node` now combines identity and admission inspection into explicit bootstrap readiness reporting for `transitloom-node`
 - `transitloom-node` now rejects the incoherent local state where a cached current admission token exists but ready node identity material does not
 - identity/admission bootstrap tests now cover valid and invalid local state combinations plus command-level startup verification
+- `internal/controlplane` now contains a minimal bootstrap-session request/response model that carries only node-local readiness summary data and a structured bootstrap-only result
+- `internal/coordinator` now exposes a bootstrap-only HTTP JSON endpoint on the configured TCP control listener(s), evaluates coordinator bootstrap state plus the node-reported readiness phase, and returns explicit accept/reject reasons without claiming final authentication
+- `internal/node` now builds bootstrap-session requests from the existing identity/admission readiness inspection, retries bootstrap coordinator endpoints until one returns a structured result, and reports transport failures separately from coordinator rejection
+- `transitloom-coordinator` now starts a minimal bootstrap control listener and stays running until signaled
+- `transitloom-node` now attempts the bootstrap control session after local readiness inspection and exits clearly on success vs rejection/failure
+- focused control-session tests now cover coordinator acceptance/rejection plus node-side endpoint fallback and structured rejection handling
 
 ### What is not done yet
 - no real object model implementation in Go
@@ -153,7 +160,9 @@ scaffolding.
 - no node enrollment flow
 - no live admission-token issuance or refresh logic
 - no coordinator-side admission-token validation logic
-- no control-plane transport implementation
+- no final QUIC + TLS 1.3 mTLS control transport implementation
+- no final TCP + TLS 1.3 fallback transport implementation
+- no live certificate-chain validation during sessions
 - no service registration implementation
 - no association implementation
 - no raw UDP data path
@@ -251,11 +260,11 @@ Near-term agent-workspace work includes:
 - updating `agents/CONTEXT.md`, `agents/MEMORY.md`, and task files as progress is made
 
 ### Implementation bootstrap
-The first real implementation work has begun with config loading scaffolding, trust bootstrap scaffolding, and node identity/admission bootstrap scaffolding.
+The first real implementation work has begun with config loading scaffolding, trust bootstrap scaffolding, node identity/admission bootstrap scaffolding, and a bootstrap-only node-to-coordinator control-session path.
 The next implementation work should continue with:
 
-- minimal node-to-coordinator control session scaffolding built on the new local identity/admission boundaries
-- live enrollment, certificate issuance, and admission-token refresh work after the control-session shape or as a deliberately split prerequisite if needed
+- service registration scaffolding built on the new control-session foundation
+- live enrollment, certificate issuance, and admission-token refresh work after service registration or as a deliberately split prerequisite if needed
 
 ### Current active implementation-oriented task
 The completed implementation tasks are:
@@ -263,10 +272,11 @@ The completed implementation tasks are:
 - `T-0002 — config loading scaffolding`
 - `T-0003 — root/coordinator bootstrap scaffolding`
 - `T-0004 — node identity and admission-token scaffolding`
+- `T-0005 — minimal node-to-coordinator control session`
 
 The next practical implementation task is:
 
-- `T-0005 — minimal node-to-coordinator control session`
+- `T-0006 — service registration basics`
 
 That should remain the next implementation slice unless the task system is deliberately reprioritized.
 
@@ -391,11 +401,13 @@ Transitloom is currently a **well-specified and now minimally implemented** proj
 - verified config loading/validation scaffolding
 - verified root/coordinator trust bootstrap validation and placeholder reporting
 - verified node identity and admission bootstrap validation, readiness reporting, and invalid-local-state rejection
-- no substantive networking, issuance, or control-session code yet
+- verified bootstrap-only node-to-coordinator control-session scaffolding over the coordinator TCP listener, with explicit non-final-auth semantics
+- no substantive issuance, service-registration, association, or data-plane code yet
 
 The correct next move is to keep the `agents/` workspace accurate and continue
-the staged implementation order from the new config, trust-bootstrap, and
-node-bootstrap foundation, moving next into minimal node-to-coordinator control
-session scaffolding or a deliberately split prerequisite if that proves safer.
+the staged implementation order from the new config, trust-bootstrap,
+node-bootstrap, and bootstrap-session foundation, moving next into service
+registration basics or a deliberately split issuance/auth prerequisite if that
+proves safer.
 
 ---

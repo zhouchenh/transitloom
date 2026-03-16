@@ -40,7 +40,6 @@ Transitloom does **not** yet have meaningful implementation of:
 - node certificate issuance
 - admission-token issuance or refresh
 - coordinator-side admission-token validation
-- control sessions
 - service registration
 - association handling
 - raw UDP carriage
@@ -50,11 +49,9 @@ Transitloom does **not** yet have meaningful implementation of:
 
 ## Active task
 
-### T-0001 — agents workspace baseline
-**status:** active  
-**task file:** `agents/tasks/T-0001-agents-workspace-baseline.md`
+No implementation task is currently marked active.
 
-Finish the minimum `agents/` workspace baseline so coding agents can operate with stable context, persistent memory, and clear task continuity.
+The next task to start is `T-0006 — service registration basics`.
 
 ---
 
@@ -78,11 +75,20 @@ Implemented explicit root/coordinator trust-bootstrap inspection, trust-material
 
 Implemented explicit node-identity and cached-admission-token bootstrap inspection, distinct persisted-state config sections, `transitloom-node` readiness reporting, and tests for valid and invalid local state combinations.
 
+### T-0005 — minimal node-to-coordinator control session
+**status:** completed
+**task file:** `agents/tasks/T-0005-minimal-node-to-coordinator-control-session.md`
+
+Implemented a bootstrap-only node-to-coordinator control-session exchange over
+the coordinator TCP listener, with explicit readiness snapshots, structured
+accept/reject results, clear placeholder reporting, and focused listener/client
+tests.
+
 ---
 
 ## Queued tasks
 
-The next implementation task should be `T-0005 — minimal node-to-coordinator control session`.
+The next implementation task should be `T-0006 — service registration basics`.
 
 ---
 
@@ -116,11 +122,11 @@ The main risk right now is **architecture drift during early implementation**, n
 
 Right now, prioritize:
 
-1. finishing the `agents/` workspace baseline
-2. keeping specs, docs, and agent context consistent
-3. building on the completed config, trust-bootstrap, and node identity/admission scaffolding with minimal control-session work
-4. avoiding premature networking/transport complexity
-5. preserving the v1 boundaries already chosen
+1. keeping specs, docs, and agent context consistent
+2. building on the completed config, trust-bootstrap, node bootstrap, and bootstrap-only control-session scaffolding with service-registration work
+3. avoiding premature networking/transport complexity
+4. preserving the v1 boundaries already chosen
+5. continuing `agents/` workspace maintenance as implementation progresses
 
 ---
 

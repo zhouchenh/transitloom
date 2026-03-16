@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"os"
@@ -38,5 +39,21 @@ func main() {
 	for _, line := range bootstrap.ReportLines() {
 		log.Print(line)
 	}
-	log.Printf("transitloom-node placeholder runtime started; node identity and admission bootstrap are scaffolded, but enrollment, token refresh, and control sessions are not implemented yet")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	session, err := node.AttemptBootstrapSession(ctx, cfg, bootstrap)
+	for _, line := range session.ReportLines() {
+		log.Print(line)
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
+	if !session.Response.Accepted() {
+		log.Printf("transitloom-node bootstrap control session was rejected by coordinator %q", session.Response.CoordinatorName)
+		os.Exit(1)
+	}
+
+	log.Printf("transitloom-node bootstrap control session reached coordinator %q; final authenticated control sessions, enrollment, and token refresh are still not implemented", session.Response.CoordinatorName)
 }

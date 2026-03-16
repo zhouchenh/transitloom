@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/zhouchenh/transitloom/internal/config"
+	"github.com/zhouchenh/transitloom/internal/coordinator"
 	"github.com/zhouchenh/transitloom/internal/pki"
 )
 
@@ -32,10 +36,24 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	listener, err := coordinator.NewBootstrapListener(cfg, bootstrap)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	log.Printf("transitloom-coordinator config validated for %q using %s", cfg.Identity.Name, *configPath)
 	for _, line := range bootstrap.ReportLines() {
 		log.Print(line)
 	}
-	log.Printf("transitloom-coordinator placeholder runtime started; trust bootstrap is scaffolded, but control sessions and issuance workflows are not implemented yet")
+	for _, line := range listener.ReportLines() {
+		log.Print(line)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	log.Printf("transitloom-coordinator minimal bootstrap control runtime started; stop with SIGINT or SIGTERM")
+	if err := listener.Run(ctx); err != nil {
+		log.Fatal(err)
+	}
 }
