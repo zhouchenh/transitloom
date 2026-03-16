@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/zhouchenh/transitloom/internal/config"
+	"github.com/zhouchenh/transitloom/internal/pki"
 )
 
 func main() {
@@ -27,6 +28,14 @@ func main() {
 		log.Fatal(err)
 	}
 
+	bootstrap, err := pki.InspectRootBootstrap(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	log.Printf("transitloom-root config validated for %q using %s", cfg.Identity.Name, *configPath)
-	log.Printf("transitloom-root placeholder runtime started; trust and issuance behavior are not implemented yet")
+	for _, line := range bootstrap.ReportLines() {
+		log.Print(line)
+	}
+	log.Printf("transitloom-root placeholder runtime started; trust bootstrap is scaffolded, but issuance workflows are not implemented yet")
 }

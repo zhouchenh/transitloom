@@ -10,7 +10,7 @@ Root and coordinator bootstrap scaffolding
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 
@@ -237,6 +237,43 @@ Trust/bootstrap expectations should remain explicit and visible.
 This task should stay local/bootstrap-oriented. Do not try to solve full global trust-state propagation here.
 
 ---
+
+## Completion notes
+
+Completed on 2026-03-16.
+
+Implemented:
+
+- `internal/pki` trust-bootstrap inspection for root and coordinator roles
+- trust-material path resolution relative to `storage.data_dir` for local relative references
+- explicit root bootstrap states for:
+  - ready trust material
+  - initialization required when root material is absent and `trust.generate_key=true`
+- explicit coordinator bootstrap states for:
+  - ready root-anchor plus intermediate material
+  - awaiting intermediate material when the root anchor exists but both intermediate files are absent
+- early failure on:
+  - missing coordinator root trust anchor
+  - partial root trust material
+  - partial coordinator intermediate material
+- placeholder startup reporting in:
+  - `transitloom-root`
+  - `transitloom-coordinator`
+- table-driven tests for valid and invalid bootstrap-state handling
+
+Verified:
+
+- `go test ./...`
+- `go build ./...`
+- manual startup of `transitloom-root` with valid and invalid bootstrap-style config
+- manual startup of `transitloom-coordinator` with valid and invalid bootstrap-style config
+
+The implementation intentionally stops short of:
+
+- root/intermediate issuance workflows
+- admission-token logic
+- node enrollment
+- control sessions
 
 ## Completion handoff
 

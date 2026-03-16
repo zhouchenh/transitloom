@@ -133,10 +133,13 @@ and startup scaffolding.
 - `internal/config` now loads YAML with strict known-field checking
 - root/coordinator/node startup now accepts `-config`, loads config, validates it, and starts placeholder runtime output
 - config validation tests and sample YAML fixtures now exist for root/coordinator/node
+- `internal/pki` now contains explicit root and coordinator trust-bootstrap inspection helpers
+- root trust-material references now resolve relative to `storage.data_dir` when configured as local relative paths
+- root startup now reports bootstrap state and rejects inconsistent or missing root material unless `trust.generate_key=true`
+- coordinator startup now requires a present root trust anchor, reports coordinator intermediate bootstrap state, and rejects partial intermediate material
 
 ### What is not done yet
 - no real object model implementation in Go
-- no root/coordinator bootstrap logic
 - no PKI issuance logic
 - no admission token logic
 - no node enrollment flow
@@ -238,20 +241,21 @@ Near-term agent-workspace work includes:
 - updating `agents/CONTEXT.md`, `agents/MEMORY.md`, and task files as progress is made
 
 ### Implementation bootstrap
-The first real implementation work has begun with config loading scaffolding.
+The first real implementation work has begun with config loading scaffolding and trust bootstrap scaffolding.
 The next implementation work should continue with:
 
-- root/coordinator bootstrap scaffolding
-- PKI/admission flow scaffolding after config loading is in place
+- node identity and admission-token scaffolding
+- PKI/admission flow scaffolding after the new trust bootstrap path
 
 ### Current active implementation-oriented task
-The completed implementation task is:
+The completed implementation tasks are:
 
 - `T-0002 — config loading scaffolding`
+- `T-0003 — root/coordinator bootstrap scaffolding`
 
 The next practical implementation task is:
 
-- `T-0003 — root/coordinator bootstrap scaffolding`
+- `T-0004 — node identity and admission-token scaffolding`
 
 That should remain the next implementation slice unless the task system is deliberately reprioritized.
 
@@ -374,10 +378,11 @@ Transitloom is currently a **well-specified and now minimally implemented** proj
 - a mostly established `agents/` workspace
 - explicit coding and reporting standards
 - verified config loading/validation scaffolding
-- no substantive networking or trust code yet
+- verified root/coordinator trust bootstrap validation and placeholder reporting
+- no substantive networking, issuance, or control-session code yet
 
 The correct next move is to keep the `agents/` workspace accurate and continue
-the staged implementation order from the new config foundation, moving next
-into root/coordinator bootstrap scaffolding.
+the staged implementation order from the new config and trust-bootstrap
+foundation, moving next into node identity and admission-token scaffolding.
 
 ---

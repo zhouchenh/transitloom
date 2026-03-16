@@ -74,6 +74,9 @@ These decisions are settled unless deliberately changed through specs.
 - Per-coordinator intermediates under one root are the chosen PKI direction
 - Routine node certificate renewal should not require the root to be online if coordinators already hold valid intermediates
 - Relay-assisted renewal is allowed when policy permits it
+- Trust-material file references resolve relative to `storage.data_dir` when config uses local relative paths
+- Root bootstrap may treat missing root cert/key material as coherent only when both are absent and `trust.generate_key=true`
+- Coordinator bootstrap requires a present root trust anchor; coordinator intermediate cert/key may both be absent as an explicit awaiting-issuance bootstrap state, but partial presence is invalid
 
 ---
 

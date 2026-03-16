@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/zhouchenh/transitloom/internal/config"
+	"github.com/zhouchenh/transitloom/internal/pki"
 )
 
 func main() {
@@ -27,6 +28,14 @@ func main() {
 		log.Fatal(err)
 	}
 
+	bootstrap, err := pki.InspectCoordinatorBootstrap(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	log.Printf("transitloom-coordinator config validated for %q using %s", cfg.Identity.Name, *configPath)
-	log.Printf("transitloom-coordinator placeholder runtime started; control-plane and relay behavior are not implemented yet")
+	for _, line := range bootstrap.ReportLines() {
+		log.Print(line)
+	}
+	log.Printf("transitloom-coordinator placeholder runtime started; trust bootstrap is scaffolded, but control sessions and issuance workflows are not implemented yet")
 }
