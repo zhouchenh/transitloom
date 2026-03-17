@@ -320,6 +320,27 @@ These decisions are settled unless deliberately changed through specs.
 
 ---
 
+## Durable multi-WAN stickiness and hysteresis decisions
+
+These decisions are settled unless deliberately changed through specs.
+
+- `MultiWANStickinessPolicy` in `internal/node/stickiness_policy.go` is the per-association state machine for path-switching stability; it is explicitly distinct from `DirectRelayFallbackPolicy` (T-0023) which governs direct↔relay class transitions; stickiness governs within-class and cross-class quality-based switching when multiple eligible candidates exist
+- The stickiness layer sits between the fallback filter and `Scheduler.Decide()` in the decision stack: candidate generation → refinement → fallback policy → stickiness policy → scheduler → carrier; this order is intentional and must not be collapsed
+- `AdjustCandidates()` returns a filtered candidate list: current-only when suppressing (forces scheduler to pick current path via `ModeSinglePath`), all candidates when allowing; the scheduler sees either a single-element or full list and picks naturally — the stickiness policy does not modify scores
+- `RecordSelection()` must be called after `Scheduler.Decide()` with the chosen path ID; it updates `currentID`, starts the hold-down timer when a switch occurs, and returns a `StickinessEval` with `SwitchOccurred=true` on a switch
+- Score comparison uses `scheduler.ScoreCandidate()` — the single authoritative scoring formula; the stickiness policy must never reimplement or duplicate the scoring logic; `ScoreCandidate()` was exported from the scheduler package specifically for this use
+- `StickinessThreshold` default=3: an alternative path must score strictly more than 3 points above the current path before a switch is allowed; this blocks trivial oscillation on measurement noise while permitting genuine quality improvements; a value of 0 disables threshold checking entirely
+- `HoldDownDuration` default=30s: after any switch, all further switches are suppressed for 30 seconds regardless of quality; hold-down prevents rapid re-switching after a change; the current path must be absent from the candidate list to bypass hold-down
+- `StickinessEval.Reason` is always non-empty; switch suppression must never be opaque; every evaluation produces a human-readable explanation including: whether hold-down was active, elapsed/total hold-down time, score comparison, and whether suppression occurred
+- `AssociationStickinessStore` manages per-association `MultiWANStickinessPolicy` instances created lazily; `Remove(associationID)` reclaims memory when an association is torn down; `Snapshot()` returns `[]StickinessSnapshot` for operator observability
+- `NewScheduledEgressRuntime` initializes `StickinessStore: NewAssociationStickinessStore(DefaultMultiWANStickinessConfig())` automatically; a nil `StickinessStore` is allowed (bypasses stickiness policy entirely) and must not panic
+- `StickinessReason`, `SwitchOccurred`, `HoldDownActive` are surfaced on both `ScheduledEgressActivation` (runtime) and `status.ScheduledEgressEntry` (observability); `ReportLines()` emits a `stickiness` line with `[SWITCH]` and `[hold-down]` labels when present
+- `PathGroup string` field on `scheduler.PathCandidate` reserves semantic space for uplink/WAN group identity (e.g., "wan0", "fiber", "lte-backup"); group-based scheduling policy is future work; the field must not be used for per-packet routing decisions in v1
+- The score-comparison approach (exposing `ScoreCandidate()`) was chosen over a `HysteresisBonus` field on `PathCandidate` because any positive bonus would cause the current path to always win when it and the alternative both score 100, making stickiness effectively permanent rather than threshold-bounded
+- The stickiness policy does not generate, exclude, or re-order candidates in the scheduling sense; it only removes non-current candidates when suppressing; this preserves the existing candidate pipeline boundaries
+
+---
+
 ## Durable WireGuard-over-mesh decisions
 
 - WireGuard is the flagship documented v1 use case

@@ -83,6 +83,27 @@ type ScheduledEgressRuntime struct {
 	// Optional: if nil, events are not recorded.
 	EventHistory *status.EventHistory
 
+	// StickinessStore holds the per-association multi-WAN path stickiness policy
+	// state machines. When non-nil, the stickiness policy suppresses switching
+	// when a better path is available but not significantly better (score delta
+	// within StickinessThreshold), and enforces a hold-down period after a switch
+	// (preventing rapid re-switching on transient quality improvements).
+	//
+	// The stickiness policy sits between the fallback filter and the scheduler:
+	//
+	//   refinement → fallback policy → stickiness policy → scheduler → carrier
+	//
+	// It is explicitly separate from:
+	//   - DirectRelayFallbackPolicy (governs direct↔relay transitions)
+	//   - PathQualityStore (governs measurement; not switching policy)
+	//   - CandidateStore/RefineCandidates (governs usability; not switching policy)
+	//   - Scheduler.Decide() (governs final path selection from the adjusted list)
+	//
+	// When nil, no stickiness policy is applied (the scheduler always picks the
+	// best-scoring path, which is the prior behavior). NewScheduledEgressRuntime
+	// creates a StickinessStore with DefaultMultiWANStickinessConfig automatically.
+	StickinessStore *AssociationStickinessStore
+
 	// mu protects lastActivations from concurrent reads and writes.
 	mu sync.RWMutex
 	// lastActivations holds the results from the most recent ActivateScheduledEgress
@@ -101,12 +122,13 @@ type ScheduledEgressRuntime struct {
 // on unmeasured (confidence=0) candidates, which is conservative and correct.
 func NewScheduledEgressRuntime() *ScheduledEgressRuntime {
 	return &ScheduledEgressRuntime{
-		Scheduler:     scheduler.NewScheduler(scheduler.DefaultStripeMatchThresholds()),
-		Direct:        NewDirectPathRuntime(),
-		Relay:         NewRelayPathRuntime(),
-		QualityStore:  scheduler.NewPathQualityStore(scheduler.DefaultQualityMaxAge),
-		FallbackStore: NewAssociationFallbackStore(DefaultFallbackConfig()),
-		EventHistory:  status.NewEventHistory(100), // Bounded to last 100 path events
+		Scheduler:       scheduler.NewScheduler(scheduler.DefaultStripeMatchThresholds()),
+		Direct:          NewDirectPathRuntime(),
+		Relay:           NewRelayPathRuntime(),
+		QualityStore:    scheduler.NewPathQualityStore(scheduler.DefaultQualityMaxAge),
+		FallbackStore:   NewAssociationFallbackStore(DefaultFallbackConfig()),
+		StickinessStore: NewAssociationStickinessStore(DefaultMultiWANStickinessConfig()),
+		EventHistory:    status.NewEventHistory(100), // Bounded to last 100 path events
 	}
 }
 
@@ -185,6 +207,24 @@ type ScheduledEgressActivation struct {
 	// FallbackReason is the human-readable explanation of the fallback policy
 	// state. Non-empty when FallbackState is non-empty.
 	FallbackReason string
+
+	// StickinessReason is the human-readable explanation of the multi-WAN
+	// stickiness policy decision for this activation. It describes whether
+	// hold-down was active, what the score comparison showed, and whether
+	// switching was suppressed. Empty when StickinessStore is nil.
+	StickinessReason string
+
+	// SwitchOccurred is true when the stickiness policy recorded a path
+	// switch — the scheduler chose a different candidate than the previously
+	// current path. False on first selection, when the current path was
+	// maintained, or when StickinessStore is nil.
+	SwitchOccurred bool
+
+	// HoldDownActive is true when the stickiness hold-down timer was active
+	// during this activation (i.e., a switch occurred recently and further
+	// switching is suppressed). False when no switch has occurred yet or
+	// when StickinessStore is nil.
+	HoldDownActive bool
 }
 
 // ScheduledEgressResult summarizes all scheduler-guided egress activation outcomes.
@@ -574,6 +614,9 @@ func (r *ScheduledEgressRuntime) Snapshot() status.ScheduledEgressSummary {
 			Candidates:       a.Candidates,
 			FallbackState:    a.FallbackState,
 			FallbackReason:   a.FallbackReason,
+			StickinessReason: a.StickinessReason,
+			SwitchOccurred:   a.SwitchOccurred,
+			HoldDownActive:   a.HoldDownActive,
 		}
 
 		// Read live traffic counters from the carrier that is actually running.
@@ -747,7 +790,38 @@ func activateSingleScheduledEgress(
 	// Apply the fallback filter: when the policy is in FallenBackToRelay or
 	// RecoveringToDirect, direct candidates are excluded from the scheduler's
 	// input. The scheduler then selects among relay candidates only.
-	schedulerCandidates := applyFallbackFilter(candidates, fallbackEval)
+	afterFallback := applyFallbackFilter(candidates, fallbackEval)
+
+	// Stickiness policy evaluation: suppress switching when the best alternative
+	// is not significantly better than the current path.
+	//
+	// The stickiness policy sits between the fallback filter and the scheduler,
+	// completing the four-layer decision stack:
+	//
+	//   candidate generation → refinement → fallback policy → stickiness policy → scheduler → carrier
+	//
+	// The policy compares the current path's score to the best alternative using
+	// ScoreCandidate() (the scheduler's own scoring formula). If the improvement
+	// is within StickinessThreshold, only the current candidate is passed to the
+	// scheduler (forcing it to maintain the current path). After a switch, a
+	// hold-down period prevents further switching regardless of score differences.
+	//
+	// The stickiness policy is separate from:
+	//   - DirectRelayFallbackPolicy: governs direct↔relay transitions
+	//   - PathQualityStore: measures quality; does not decide when to switch
+	//   - CandidateStore/RefineCandidates: governs usability; not switching policy
+	//   - Scheduler.Decide(): makes final path selection from the adjusted list
+	//
+	// When StickinessStore is nil, all candidates after the fallback filter pass
+	// directly to the scheduler (prior behavior: always pick best available).
+	var schedulerCandidates []scheduler.PathCandidate
+	var stickinessPreEval StickinessEval
+	if runtime.StickinessStore != nil {
+		schedulerCandidates, stickinessPreEval = runtime.StickinessStore.AdjustCandidates(input.AssociationID, afterFallback)
+	} else {
+		schedulerCandidates = afterFallback
+		stickinessPreEval = StickinessEval{Reason: "stickiness policy not configured; all candidates passed to scheduler"}
+	}
 
 	// Egress decision point: the scheduler runs here, at the source endpoint.
 	// This is the primary integration between scheduler decisions and carrier
@@ -755,6 +829,32 @@ func activateSingleScheduledEgress(
 	// must not call Decide() for end-to-end path selection.
 	decision := runtime.Scheduler.Decide(input.AssociationID, schedulerCandidates)
 	activation.Decision = decision
+
+	// Record the scheduler's selection with the stickiness policy so it can
+	// track path switches and manage the hold-down timer.
+	//
+	// The RecordSelection result is the post-decision eval: it tells whether
+	// a switch occurred. If a switch occurred, its reason (which path changed)
+	// is more informative than the pre-eval (which explained the bonus). If no
+	// switch occurred, the pre-eval explains why (threshold or hold-down).
+	if runtime.StickinessStore != nil {
+		chosenID := ""
+		if len(decision.ChosenPaths) > 0 {
+			chosenID = decision.ChosenPaths[0].CandidateID
+		}
+		postEval := runtime.StickinessStore.RecordSelection(input.AssociationID, chosenID)
+		if postEval.SwitchOccurred {
+			// Switch occurred: the post-eval explains which paths changed.
+			activation.StickinessReason = postEval.Reason
+		} else {
+			// No switch: the pre-eval explains why (threshold/hold-down context).
+			activation.StickinessReason = stickinessPreEval.Reason
+		}
+		activation.SwitchOccurred = postEval.SwitchOccurred
+		activation.HoldDownActive = stickinessPreEval.HoldDownActive
+	} else {
+		activation.StickinessReason = stickinessPreEval.Reason
+	}
 
 	// Record diagnostics for all candidates considered.
 	// This preserves the "why" for both included and excluded candidates.

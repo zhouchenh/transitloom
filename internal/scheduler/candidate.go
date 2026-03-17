@@ -130,6 +130,18 @@ type PathCandidate struct {
 
 	// Health is the current health classification of this candidate.
 	Health HealthState
+
+	// PathGroup is an optional operator-assigned uplink or path group label.
+	// It identifies which WAN uplink or network interface this candidate uses.
+	// Examples: "wan0", "fiber", "lte-backup".
+	//
+	// PathGroup is an input for multi-WAN policy decisions: the stickiness
+	// policy may prefer paths within the same group or may apply group-specific
+	// weights. Group-based scheduling policy is future work; this field reserves
+	// the semantic space without implementing full group-based routing in v1.
+	//
+	// Empty string means no group assigned (all candidates treated as ungrouped).
+	PathGroup string
 }
 
 // effectiveAdminWeight returns the admin weight, using 100 when unset.

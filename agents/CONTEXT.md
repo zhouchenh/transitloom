@@ -208,6 +208,24 @@ to scheduler. `FallbackState` and `FallbackReason` recorded on `ScheduledEgressA
 The fallback policy is explicitly separate from candidate generation, measurement, and
 the scheduler — it sits as a narrow filter layer between them.
 
+Multi-WAN policy and hysteresis basics (T-0024) are now implemented.
+`MultiWANStickinessPolicy` and `AssociationStickinessStore` in
+`internal/node/stickiness_policy.go` provide the per-association path-switching
+stability layer. `PathGroup string` field added to `scheduler.PathCandidate` for
+uplink-group identity. `ScoreCandidate()` exported from the scheduler package as the
+single authoritative scoring formula. The stickiness layer sits between the fallback
+filter and `Scheduler.Decide()` in `activateSingleScheduledEgress()`: `AdjustCandidates()`
+returns a filtered candidate list (current-only when suppressing, all candidates when
+allowing); `RecordSelection()` updates per-association state and starts hold-down after a
+switch. Suppression logic: (1) hold-down active after a switch for `HoldDownDuration`=30s
+— suppresses any switch unconditionally; (2) `StickinessThreshold`=3 point minimum score
+advantage required before switching; (3) StickinessThreshold=0 disables the check.
+Current-path-gone always allows free selection. `StickinessReason`, `SwitchOccurred`,
+`HoldDownActive` surfaced on `ScheduledEgressActivation` and `status.ScheduledEgressEntry`.
+`ReportLines()` updated to show stickiness state with `[SWITCH]` and `[hold-down]` labels.
+`NewScheduledEgressRuntime` creates `AssociationStickinessStore` with default config.
+10 focused tests added and passing.
+
 ---
 
 ## Current v1 architectural boundaries
@@ -326,6 +344,8 @@ The completed implementation tasks are:
 - `T-0020 — quality-aware path selection refinement`
 - `T-0021 — control-plane transport security maturation`
 - `T-0022 — candidate refresh and revalidation automation basics`
+- `T-0023 — direct-relay fallback and recovery basics`
+- `T-0024 — multi-WAN policy and hysteresis basics`
 - `T-0025 — operator path diagnostics and explainability basics`
 - `T-0026 — path change event history and audit basics`
 - `T-0028 — config profile and policy bundling basics`

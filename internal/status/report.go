@@ -81,6 +81,23 @@ func (s ScheduledEgressSummary) ReportLines() []string {
 		}
 		lines = append(lines, reasonLine)
 
+		// Stickiness policy state: show when present to give operators
+		// switch-stability visibility alongside the fallback state.
+		if e.StickinessReason != "" {
+			switchLabel := ""
+			if e.SwitchOccurred {
+				switchLabel = " [SWITCH]"
+			}
+			holdLabel := ""
+			if e.HoldDownActive {
+				holdLabel = " [hold-down]"
+			}
+			lines = append(lines, fmt.Sprintf(
+				"    stickiness%s%s: %s",
+				switchLabel, holdLabel, e.StickinessReason,
+			))
+		}
+
 		// Traffic counters: only emit when there is something to report.
 		// Emitting zero counters for non-running carriers adds noise without value.
 		if e.CarrierActivated == "direct" && (e.IngressPackets > 0 || e.IngressBytes > 0) {

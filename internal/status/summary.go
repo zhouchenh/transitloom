@@ -171,6 +171,25 @@ type ScheduledEgressEntry struct {
 	// where in the fallback cycle the system is.
 	FallbackReason string
 
+	// StickinessReason is the human-readable explanation of the stickiness
+	// policy's last decision: whether it suppressed a switch (hold-down active,
+	// below threshold), allowed a switch (threshold exceeded, current path gone),
+	// or passed all candidates through (first selection, threshold disabled).
+	// Empty when the stickiness policy is not configured.
+	StickinessReason string
+
+	// SwitchOccurred is true when the stickiness policy detected a path switch
+	// during the last activation (the scheduler chose a different path than the
+	// previously selected one). False on first selection, no-switch, or when
+	// the stickiness policy is not configured.
+	SwitchOccurred bool
+
+	// HoldDownActive is true when the stickiness hold-down timer was active
+	// during the last activation. Hold-down suppresses switching regardless of
+	// quality improvement. False when hold-down is not running or the policy
+	// is not configured.
+	HoldDownActive bool
+
 	// IngressPackets and IngressBytes are live counters for direct-path egress.
 	// Non-zero only when CarrierActivated == "direct" and traffic has flowed.
 	IngressPackets uint64

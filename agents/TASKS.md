@@ -79,6 +79,28 @@ first discipline, absent vs failed measurement, endpoint freshness update,
 quality store update, executor error handling, context cancellation, path ID
 mapping, and end-to-end integration test. `go build ./...` and `go test ./...` pass.
 
+### T-0024 — multi-WAN policy and hysteresis basics
+**status:** completed
+**task file:** `agents/tasks/T-0024-multi-wan-policy-and-hysteresis-basics.md`
+
+Implemented the first explicit multi-WAN stickiness and hysteresis layer.
+Added `MultiWANStickinessPolicy` and `AssociationStickinessStore` in
+`internal/node/stickiness_policy.go`. Added `PathGroup string` field to
+`scheduler.PathCandidate` for uplink-group identity. Added exported
+`ScoreCandidate()` to the scheduler package as the single authoritative
+scoring formula for threshold comparisons. Integrated the stickiness layer
+between the fallback filter and `Scheduler.Decide()` in
+`activateSingleScheduledEgress()`: `AdjustCandidates()` filters the list
+(current-only when suppressing, all candidates when allowing); `RecordSelection()`
+updates state and starts hold-down after a switch. Added `StickinessReason`,
+`SwitchOccurred`, `HoldDownActive` fields to `ScheduledEgressActivation` and
+`status.ScheduledEgressEntry`. Updated `ReportLines()` to surface stickiness
+state for operator visibility. Added `NewAssociationStickinessStore` creation in
+`NewScheduledEgressRuntime`. 10 focused tests (first selection, trivial suppression,
+clear improvement, hold-down, hold-down expiry, current path disappears, switch
+detection, per-association isolation, threshold=0 disable, Remove reset).
+`go build ./...` and `go test ./...` pass.
+
 ### T-0023 — direct-relay fallback and recovery basics
 **status:** completed
 **task file:** `agents/tasks/T-0023-direct-relay-fallback-and-recovery-basics.md`

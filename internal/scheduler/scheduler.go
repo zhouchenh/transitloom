@@ -95,6 +95,24 @@ type Scheduler struct {
 	counters map[string]*AssociationCounters // keyed by association ID
 }
 
+// ScoreCandidate computes the composite score for a single path candidate.
+// The result uses the same scoring logic as Scheduler.Decide(): AdminWeight
+// as base, relay penalty for relay-class paths, degraded-health penalty,
+// and quality penalties for RTT and loss when measurements are available.
+// The score is clamped to [0, 100].
+//
+// This function is provided so external callers (e.g., the multi-WAN
+// stickiness policy) can compare candidate scores without running a full
+// scheduling decision. It is the single authoritative score formula; callers
+// must not duplicate the scoring logic independently.
+func ScoreCandidate(c PathCandidate) int {
+	scored := scoreCandidates([]PathCandidate{c})
+	if len(scored) == 0 {
+		return 0
+	}
+	return scored[0].score
+}
+
 // NewScheduler creates a new Scheduler with the given stripe match thresholds.
 // Use DefaultStripeMatchThresholds for conservative v1 defaults.
 func NewScheduler(thresholds StripeMatchThresholds) *Scheduler {

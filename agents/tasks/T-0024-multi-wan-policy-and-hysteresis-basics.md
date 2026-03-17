@@ -10,7 +10,7 @@ Multi-WAN policy and hysteresis basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 
