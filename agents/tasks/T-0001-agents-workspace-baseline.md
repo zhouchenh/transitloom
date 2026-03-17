@@ -10,7 +10,7 @@ Agents workspace baseline
 
 ## Status
 
-Active
+Completed
 
 ## Purpose
 
@@ -165,25 +165,34 @@ This is primarily a content/consistency verification task rather than a build/te
 
 ## Current progress notes
 
-Known progress so far:
-- `AGENTS.md` drafted
-- core `agents/` files are being drafted
-- task indexing model has been refined so that detailed tasks live in `agents/tasks/*.md`
+Completed:
 
-Remaining likely work:
-- finalize `agents/TASKS.md`
-- finalize this task file
-- draft the next task file(s)
-- optionally add `agents/README.md` if it still feels useful after the core files settle
+- `AGENTS.md` is in place and used as the repository’s authoritative agent instruction file
+- the core `agents/` workspace baseline is established:
+  - `agents/BOOTSTRAP.md`
+  - `agents/IDENTITY.md`
+  - `agents/SOUL.md`
+  - `agents/CONTEXT.md`
+  - `agents/MEMORY.md`
+  - `agents/TASKS.md`
+  - `agents/README.md`
+  - `agents/CODING.md`
+  - `agents/REPORTING.md`
+- the task-index model is established:
+  - `agents/TASKS.md` is the compact index
+  - `agents/tasks/*.md` holds detailed task files
+- the workspace has been used successfully across later implementation tasks and is now part of normal repository workflow
 
 ---
 
 ## Handoff notes
 
-When this task is complete, the next task to activate should be:
+This task is complete.
+
+The next task that followed this baseline was:
 
 - `T-0002 — config loading scaffolding`
 
-That is the first implementation-oriented task that should follow the agent workspace baseline.
+That progression has already occurred, and the `agents/` workspace is now the normal continuity layer for subsequent tasks.
 
 ---
