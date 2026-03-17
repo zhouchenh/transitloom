@@ -62,6 +62,23 @@ type ScheduledEgressRuntime struct {
 	// Distinct from QualityStore — they track different concerns.
 	EndpointRegistry *transport.EndpointRegistry
 
+	// FallbackStore holds the per-association direct-vs-relay fallback policy
+	// state machines. When non-nil, the fallback policy gates recovery back to
+	// direct after a relay fallback, preventing rapid oscillation. The store is
+	// evaluated after candidate refinement and before Scheduler.Decide(), so the
+	// fallback policy can filter direct candidates when anti-flap is active.
+	//
+	// The fallback policy is separate from candidate generation and measurement:
+	//   - CandidateStore/RefineCandidates produce the usability signals it consumes
+	//   - PathQualityStore influences usability via candidate refinement, not directly
+	//   - Scheduler.Decide() receives the filtered candidate set after policy applies
+	//
+	// When nil, no fallback policy is applied (direct candidates always pass to
+	// the scheduler; the scheduler prefers direct via its relay penalty, which is
+	// the prior behavior). NewScheduledEgressRuntime creates a FallbackStore with
+	// DefaultFallbackConfig automatically.
+	FallbackStore *AssociationFallbackStore
+
 	// mu protects lastActivations from concurrent reads and writes.
 	mu sync.RWMutex
 	// lastActivations holds the results from the most recent ActivateScheduledEgress
@@ -80,10 +97,11 @@ type ScheduledEgressRuntime struct {
 // on unmeasured (confidence=0) candidates, which is conservative and correct.
 func NewScheduledEgressRuntime() *ScheduledEgressRuntime {
 	return &ScheduledEgressRuntime{
-		Scheduler:    scheduler.NewScheduler(scheduler.DefaultStripeMatchThresholds()),
-		Direct:       NewDirectPathRuntime(),
-		Relay:        NewRelayPathRuntime(),
-		QualityStore: scheduler.NewPathQualityStore(scheduler.DefaultQualityMaxAge),
+		Scheduler:     scheduler.NewScheduler(scheduler.DefaultStripeMatchThresholds()),
+		Direct:        NewDirectPathRuntime(),
+		Relay:         NewRelayPathRuntime(),
+		QualityStore:  scheduler.NewPathQualityStore(scheduler.DefaultQualityMaxAge),
+		FallbackStore: NewAssociationFallbackStore(DefaultFallbackConfig()),
 	}
 }
 
@@ -153,6 +171,15 @@ type ScheduledEgressActivation struct {
 	// Candidates records the diagnostics for all candidates considered
 	// for this association's decision.
 	Candidates []status.PathCandidateStatus
+
+	// FallbackState is the fallback policy state at the time of this activation.
+	// One of the FallbackState constants: "prefer-direct", "fallen-back-to-relay",
+	// "recovering-to-direct", or "" when FallbackStore is nil.
+	FallbackState string
+
+	// FallbackReason is the human-readable explanation of the fallback policy
+	// state. Non-empty when FallbackState is non-empty.
+	FallbackReason string
 }
 
 // ScheduledEgressResult summarizes all scheduler-guided egress activation outcomes.
@@ -421,6 +448,8 @@ func (r *ScheduledEgressRuntime) Snapshot() status.ScheduledEgressSummary {
 			SchedulerReason:  a.Decision.Reason,
 			ActivationError:  a.ActivationError,
 			Candidates:       a.Candidates,
+			FallbackState:    a.FallbackState,
+			FallbackReason:   a.FallbackReason,
 		}
 
 		// Read live traffic counters from the carrier that is actually running.
@@ -548,11 +577,53 @@ func activateSingleScheduledEgress(
 		copy(candidates[:len(input.PathCandidates)], enriched)
 	}
 
+	// Fallback policy evaluation: determine whether to filter direct candidates.
+	//
+	// The fallback policy runs after candidate refinement (so usability signals
+	// are accurate) and before Scheduler.Decide() (so the scheduler only sees
+	// candidates allowed by the policy). This preserves the layering:
+	//
+	//   candidate generation → refinement → fallback policy → scheduler → carrier
+	//
+	// The policy is separate from all three neighbor layers:
+	//   - It does not generate or alter candidates (that is refinement's job).
+	//   - It does not score or select paths (that is the scheduler's job).
+	//   - It does not start or stop carriers (that is the activation layer's job).
+	//
+	// When FallbackStore is nil (not configured), all candidates pass through to
+	// the scheduler unchanged. The scheduler still prefers direct via its relay
+	// penalty, which is the correct baseline behavior.
+	directUsable := hasUsableDirectCandidate(candidates)
+	relayUsable := hasUsableRelayCandidate(candidates)
+
+	var fallbackEval FallbackEval
+	if runtime.FallbackStore != nil {
+		fallbackEval = runtime.FallbackStore.Evaluate(input.AssociationID, directUsable, relayUsable)
+	} else {
+		fallbackEval = FallbackEval{
+			State:        FallbackStatePreferDirect,
+			FilterDirect: false,
+			Reason:       "fallback policy not configured; direct preferred by default",
+		}
+	}
+
+	// Record the fallback policy outcome on the activation before applying the filter.
+	// This makes the policy decision visible regardless of what the scheduler decides:
+	// an operator can compare FallbackState with CarrierActivated to understand
+	// why the system is on relay even when direct candidates technically exist.
+	activation.FallbackState = string(fallbackEval.State)
+	activation.FallbackReason = fallbackEval.Reason
+
+	// Apply the fallback filter: when the policy is in FallenBackToRelay or
+	// RecoveringToDirect, direct candidates are excluded from the scheduler's
+	// input. The scheduler then selects among relay candidates only.
+	schedulerCandidates := applyFallbackFilter(candidates, fallbackEval)
+
 	// Egress decision point: the scheduler runs here, at the source endpoint.
 	// This is the primary integration between scheduler decisions and carrier
 	// activation. Endpoint-owned: only source endpoints call Decide(); relays
 	// must not call Decide() for end-to-end path selection.
-	decision := runtime.Scheduler.Decide(input.AssociationID, candidates)
+	decision := runtime.Scheduler.Decide(input.AssociationID, schedulerCandidates)
 	activation.Decision = decision
 
 	// Record diagnostics for all candidates considered.

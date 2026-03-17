@@ -152,6 +152,24 @@ type ScheduledEgressEntry struct {
 	// the scheduler chose a path but the carrier could not be started.
 	ActivationError string
 
+	// FallbackState is the direct-vs-relay fallback policy state for this
+	// association at the time of the last activation. One of:
+	//   "prefer-direct"         — direct is preferred (normal state)
+	//   "fallen-back-to-relay"  — direct unusable; relay in active use
+	//   "recovering-to-direct"  — relay dwell expired; confirming direct stability
+	//   ""                      — fallback policy not configured
+	//
+	// This is distinct from CarrierActivated: FallbackState reflects the policy
+	// decision layer; CarrierActivated reflects what carrier actually started.
+	// Together they make the full fallback/recovery state visible to operators.
+	FallbackState string
+
+	// FallbackReason is the human-readable explanation of why the fallback
+	// policy is in the current state. Non-empty when FallbackState is non-empty.
+	// Shows elapsed dwell/recovery window time so operators can see exactly
+	// where in the fallback cycle the system is.
+	FallbackReason string
+
 	// IngressPackets and IngressBytes are live counters for direct-path egress.
 	// Non-zero only when CarrierActivated == "direct" and traffic has flowed.
 	IngressPackets uint64

@@ -10,7 +10,7 @@ Direct-relay fallback and recovery basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 
@@ -267,6 +267,43 @@ Do not turn a bounded fallback task into a giant failover framework.
 
 ### Risk 5: poor operator visibility
 Do not make it hard to explain why the system chose direct, fell back to relay, or recovered to direct.
+
+---
+
+## Implementation notes
+
+### What was implemented
+
+Added `DirectRelayFallbackPolicy` (per-association state machine) and `AssociationFallbackStore`
+(per-association policy map) in `internal/node/fallback_policy.go`.
+
+The state machine has three explicit states:
+- `prefer-direct` (initial): direct candidates pass to the scheduler; direct preferred via relay penalty
+- `fallen-back-to-relay`: direct unusable; relay in active use; `MinRelayDwell` anti-flap gate active
+- `recovering-to-direct`: dwell expired, direct re-appeared; `RecoveryConfirmWindow` gates return
+
+Key behaviors:
+- Anti-flap: even when direct re-appears, policy stays on relay for `MinRelayDwell` (30s default)
+- Recovery confirmation: direct must be continuously usable for `RecoveryConfirmWindow` (15s) before return
+- If relay also disappears while in relay-fallback state: return to prefer-direct (FilterDirect=false)
+- If direct drops during recovery window: return to relay, reset dwell timer
+
+Integration in `activateSingleScheduledEgress()`:
+1. Post-refinement candidate list checked for direct/relay usability
+2. `FallbackStore.Evaluate()` called with usability signals
+3. `applyFallbackFilter()` removes direct candidates when `FilterDirect=true`
+4. Filtered list passed to `Scheduler.Decide()`
+5. `FallbackState`/`FallbackReason` recorded on `ScheduledEgressActivation` and propagated to `status.ScheduledEgressEntry`
+
+### Files changed
+- `internal/node/fallback_policy.go` (new)
+- `internal/node/fallback_policy_test.go` (new, 21 test functions, all pass)
+- `internal/node/scheduled_egress.go` (FallbackStore field, integration in activateSingleScheduledEgress, FallbackState/FallbackReason on activation struct)
+- `internal/status/summary.go` (FallbackState/FallbackReason on ScheduledEgressEntry)
+
+### Verification
+- `go build ./...` passes
+- `go test ./...` passes (all 21 fallback tests + all pre-existing tests)
 
 ---
 

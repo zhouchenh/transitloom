@@ -193,6 +193,21 @@ Targeted external endpoint probing and freshness revalidation basics (T-0017) ar
 
 Operator path diagnostics and explainability basics (T-0025) are now implemented. Enhanced `internal/status` types to carry `PathCandidateStatus` for all considered candidates, including exclusion reasons, health degradation, endpoint freshness, and measured quality. Updated `ScheduledEgressRuntime.Snapshot()` in `internal/node` to include these diagnostics for each association. Enhanced the scheduler to provide detailed "why" reasons for burst vs stripe mode decisions, including explicit mismatch reasons. `tlctl node status` now surfaces these detailed "why chosen / why not chosen" diagnostics by printing the updated `ScheduledEgressSummary.ReportLines()`. 10 focused tests added for diagnostic logic and report formatting.
 
+Direct-relay fallback and recovery basics (T-0023) are now implemented.
+`DirectRelayFallbackPolicy` in `internal/node/fallback_policy.go` is a per-association
+three-state machine (`prefer-direct` / `fallen-back-to-relay` / `recovering-to-direct`)
+with two timing thresholds: `MinRelayDwell` (30s default, anti-flap gate) and
+`RecoveryConfirmWindow` (15s default, stability confirmation before returning to direct).
+`AssociationFallbackStore` maps per-association policies, created lazily. Integration in
+`activateSingleScheduledEgress()` sits between candidate refinement and `Scheduler.Decide()`:
+direct/relay usability signals derived from the post-refinement candidate list; policy evaluated;
+`applyFallbackFilter()` removes direct candidates when `FilterDirect=true`; filtered list passed
+to scheduler. `FallbackState` and `FallbackReason` recorded on `ScheduledEgressActivation` and
+`status.ScheduledEgressEntry` for operator visibility. `NewScheduledEgressRuntime` creates
+`FallbackStore` with `DefaultFallbackConfig` automatically. 21 focused tests, all pass.
+The fallback policy is explicitly separate from candidate generation, measurement, and
+the scheduler — it sits as a narrow filter layer between them.
+
 ---
 
 ## Current v1 architectural boundaries

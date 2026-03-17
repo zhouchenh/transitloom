@@ -50,9 +50,30 @@ Transitloom does **not** yet have meaningful implementation of:
 
 ## Active task
 
-None.
+None. T-0023 has been completed. See queued tasks below for the next work.
 
 ## Recently completed
+
+### T-0023 — direct-relay fallback and recovery basics
+**status:** completed
+**task file:** `agents/tasks/T-0023-direct-relay-fallback-and-recovery-basics.md`
+
+Implemented the first explicit direct-to-relay fallback and recovery behavior.
+Added `DirectRelayFallbackPolicy` (per-association three-state machine:
+`prefer-direct` → `fallen-back-to-relay` → `recovering-to-direct`) and
+`AssociationFallbackStore` (per-association policy map) in
+`internal/node/fallback_policy.go`. The policy enforces: (1) `MinRelayDwell`
+(30s) anti-flap gate — direct candidates filtered even if re-usable until dwell
+expires; (2) `RecoveryConfirmWindow` (15s) — direct must be continuously usable
+before the policy returns to prefer-direct; (3) relay disappearance while in
+relay-fallback state triggers return to prefer-direct (not stuck); (4) direct
+failure during recovery window resets dwell timer. `applyFallbackFilter()` removes
+direct candidates when `FilterDirect=true`. Integration in `activateSingleScheduledEgress()`:
+usability signals derived post-refinement, policy evaluated, filter applied, then
+`Scheduler.Decide()` called. `FallbackState`/`FallbackReason` surfaced on
+`ScheduledEgressActivation` and `status.ScheduledEgressEntry` for operator visibility.
+21 focused tests (state machine, anti-flap, recovery, abort, isolation, filter helpers)
+added and passing. `go build ./...` and `go test ./...` pass.
 
 ### T-0022 — candidate refresh and revalidation automation basics
 **status:** completed
