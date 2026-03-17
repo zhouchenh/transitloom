@@ -120,6 +120,12 @@ These are among the most important v1 boundaries.
 - Security-sensitive global state should use ordered operations rather than weak overwrite semantics
 - Partitioned coordinators may accept security-sensitive changes only as **pending proposals**
 - Nodes must not treat pending proposals as committed truth
+- All bootstrap transport timeout, retry, and body-limit constants live in `internal/controlplane/transport.go` and are named; magic literals are not acceptable
+- `TransportErrorKind` + `TransportError` + `ClassifyTransportError` in `internal/controlplane/errors.go` are the canonical way to classify raw transport errors; callers must not parse error strings to make retry/skip decisions
+- Retry is bounded: only `TransportErrorKindTimeout` is retryable (up to `BootstrapRetryMaxAttempts`); `TransportErrorKindConnectionRefused` and `TransportErrorKindContextCanceled` are never retried
+- The coordinator bootstrap listener's HTTP server must have `ReadTimeout`, `WriteTimeout`, `IdleTimeout`, `MaxHeaderBytes`, and per-handler `http.MaxBytesReader` set; omitting these creates attack surface
+- The current bootstrap control transport is HTTP without TLS; the `BootstrapProtocolVersion` and `BootstrapOnly` response fields explicitly declare that this is not the final QUIC+mTLS/TCP+TLS transport; future work must replace the transport without removing the semantic distinction
+- `BootstrapEndpointAttempt.ErrorKind` records the normalized error kind for each failed attempt; report lines must include `kind=` for operator observability
 
 ---
 

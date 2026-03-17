@@ -52,12 +52,26 @@ Transitloom does **not** yet have meaningful implementation of:
 
 No task is currently active.
 
-The next task to pick up is **T-0012 — control-plane transport hardening** (or a
-measurement/observability task if that is a better next step).
+The next task to pick up is **T-0013 — scheduler-to-carrier integration** (wiring
+`Scheduler.Decide()` results into `DirectCarrier` and `RelayEgressCarrier`) or a
+transport-security maturation task (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
 
 ---
 
 ## Recently completed
+
+### T-0012 — control-plane transport hardening
+**status:** completed
+**task file:** `agents/tasks/T-0012-control-plane-transport-hardening.md`
+
+Added `internal/controlplane/transport.go` with named timeout/retry/body-limit
+constants, `internal/controlplane/errors.go` with `TransportError`/`TransportErrorKind`/
+`ClassifyTransportError`. Updated coordinator bootstrap listener with full HTTP server
+timeouts and `http.MaxBytesReader` body limiting. Updated node bootstrap session
+with bounded retry/backoff for timeout errors and immediate skip for non-retryable
+errors (connection-refused, context-canceled). Added `ErrorKind` field to
+`BootstrapEndpointAttempt`. Added 12 focused tests.
+`go build ./...` and `go test ./...` both pass.
 
 ### T-0011 — scheduler baseline and multi-WAN refinement
 **status:** completed
@@ -167,7 +181,9 @@ multi-WAN, or encrypted carriage support.
 
 ## Queued tasks
 
-The next implementation task is `T-0011 — scheduler baseline and multi-WAN refinement`.
+The next implementation tasks are:
+- `T-0013 — scheduler-to-carrier integration` (wiring `Decide()` into carriers)
+- transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback)
 
 ---
 

@@ -57,8 +57,16 @@ func NewBootstrapListener(cfg config.CoordinatorConfig, bootstrap pki.Coordinato
 		}
 
 		server := &http.Server{
-			Handler:           handler,
-			ReadHeaderTimeout: 5 * time.Second,
+			Handler: handler,
+			// ReadHeaderTimeout guards against slow-loris header delivery.
+			// ReadTimeout covers the full request (header + body). Both use
+			// explicit named constants rather than magic literals so the
+			// rationale is visible in one reviewed location.
+			ReadHeaderTimeout: controlplane.BootstrapConnectTimeout,
+			ReadTimeout:       controlplane.BootstrapServerReadTimeout,
+			WriteTimeout:      controlplane.BootstrapServerWriteTimeout,
+			IdleTimeout:       controlplane.BootstrapServerIdleTimeout,
+			MaxHeaderBytes:    controlplane.BootstrapServerMaxHeaderBytes,
 		}
 
 		listener.listeners = append(listener.listeners, ln)
@@ -140,6 +148,11 @@ func newBootstrapControlHandler(coordinatorName string, bootstrap pki.Coordinato
 			return
 		}
 
+		// Limit request body size. Bootstrap requests carry only short JSON
+		// summaries; a large body indicates either a misconfigured sender or
+		// an adversarial client. Limiting here prevents unbounded memory use.
+		r.Body = http.MaxBytesReader(w, r.Body, controlplane.BootstrapMaxRequestBodyBytes)
+
 		request, err := controlplane.DecodeBootstrapSessionRequest(r.Body)
 		if err != nil {
 			response := bootstrapSessionResponse(coordinatorName, controlplane.BootstrapSessionOutcomeInvalidRequest, controlplane.BootstrapSessionReasonInvalidReadiness,
@@ -166,6 +179,8 @@ func newBootstrapControlHandler(coordinatorName string, bootstrap pki.Coordinato
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, controlplane.BootstrapMaxRequestBodyBytes)
 
 		request, err := controlplane.DecodeServiceRegistrationRequest(r.Body)
 		if err != nil {
@@ -199,6 +214,8 @@ func newBootstrapControlHandler(coordinatorName string, bootstrap pki.Coordinato
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, controlplane.BootstrapMaxRequestBodyBytes)
 
 		request, err := controlplane.DecodeAssociationRequest(r.Body)
 		if err != nil {
@@ -522,7 +539,7 @@ func countServiceRegistrationResults(results []controlplane.ServiceRegistrationR
 }
 
 func (l *BootstrapListener) shutdown() error {
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), controlplane.BootstrapServerShutdownTimeout)
 	defer cancel()
 
 	var firstErr error

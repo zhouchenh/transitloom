@@ -10,7 +10,7 @@ Control-plane transport hardening
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 
@@ -283,5 +283,52 @@ When this task is complete, the next likely task should be:
 unless implementation reveals that a smaller prerequisite should be split out first.
 
 The important outcome is that Transitloom now has a significantly more robust and observable control-plane transport foundation without violating the staged v1 architecture.
+
+---
+
+## Completion notes
+
+Completed 2026-03-17.
+
+### What was implemented
+
+- `internal/controlplane/transport.go` — named constants for all bootstrap transport
+  timeouts, retry limits, body size limits, and server timeouts:
+  `BootstrapConnectTimeout`, `BootstrapRetryInitialBackoff`, `BootstrapRetryMaxBackoff`,
+  `BootstrapRetryMaxAttempts`, `BootstrapServerReadTimeout`, `BootstrapServerWriteTimeout`,
+  `BootstrapServerIdleTimeout`, `BootstrapServerShutdownTimeout`,
+  `BootstrapMaxRequestBodyBytes`, `BootstrapServerMaxHeaderBytes`
+
+- `internal/controlplane/errors.go` — `TransportErrorKind` enum, `TransportError`
+  struct with `Kind`, `Endpoint`, `Err`, `Retryable()`, `Unwrap()`, and
+  `ClassifyTransportError()`. Covers: Timeout, ConnectionRefused, ContextCanceled,
+  Protocol, Unknown.
+
+- `internal/controlplane/bootstrap_session.go`, `service_registration.go`,
+  `association.go` — replaced hardcoded `3 * time.Second` with `BootstrapConnectTimeout`
+
+- `internal/coordinator/bootstrap_listener.go` — added `ReadTimeout`, `WriteTimeout`,
+  `IdleTimeout`, `MaxHeaderBytes` from named constants; replaced magic `5*time.Second`
+  shutdown with `BootstrapServerShutdownTimeout`; added `http.MaxBytesReader` to
+  all three handler paths to enforce `BootstrapMaxRequestBodyBytes`
+
+- `internal/node/control_session.go` — `BootstrapEndpointAttempt` now carries
+  `ErrorKind`; added `attemptEndpointWithRetry()` with bounded exponential backoff
+  for retryable (timeout) errors only; connection-refused and context-canceled abort
+  without retry; report lines include `kind=` label
+
+- `internal/controlplane/errors_test.go` — 7 tests covering all error kinds,
+  retryability, and real-dial connection-refused classification
+
+- `internal/node/transport_hardening_test.go` — 5 tests covering:
+  connection-refused skips immediately, error kind in report lines, shutdown cleans,
+  oversized body rejected, context-canceled aborts
+
+### What was not implemented
+
+- QUIC+TLS 1.3 mTLS control transport (deferred; bootstrap HTTP scaffolding remains)
+- TCP+TLS 1.3 fallback transport
+- Live certificate/admission validation
+- Benchmarks (no clearly hot repeated helper was introduced)
 
 ---

@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/zhouchenh/transitloom/internal/service"
 )
@@ -174,7 +173,7 @@ func (c Client) RegisterServices(ctx context.Context, endpoint string, request S
 
 	httpClient := c.HTTPClient
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 3 * time.Second}
+		httpClient = &http.Client{Timeout: BootstrapConnectTimeout}
 	}
 
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+endpoint+ServiceRegistrationPath, bytes.NewReader(payload))

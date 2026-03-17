@@ -183,6 +183,8 @@ Single relay hop basics (T-0010) are implemented. `RelayCarrier` (coordinator re
 
 Scheduler baseline and multi-WAN refinement (T-0011) are now implemented. `internal/scheduler` now contains the first endpoint-owned scheduler: `PathCandidate`, `RelayCandidate`, `PathQuality`, `PathClass`, `HealthState`, `SchedulerDecision`, `Mode`, `ChosenPath`, `Scheduler`, `StripeMatchThresholds`, `AssociationCounters`, `SchedulerStatus`. The scheduler filters candidates by association ID + health, scores by AdminWeight + relay penalty + quality, defaults to `ModeWeightedBurstFlowlet`, and activates `ModePerPacketStripe` only when all paths are within configured thresholds. 25 tests and 2 benchmarks pass. Scheduler-to-carrier integration (wiring Decide() results into DirectCarrier/RelayEgressCarrier) is not yet done.
 
+Control-plane transport hardening (T-0012) is now implemented. `internal/controlplane/transport.go` defines named constants for all bootstrap transport timeouts, retry limits, and body size limits. `internal/controlplane/errors.go` defines `TransportErrorKind`, `TransportError`, and `ClassifyTransportError()`. The coordinator bootstrap listener now has full HTTP server timeouts (`ReadTimeout`, `WriteTimeout`, `IdleTimeout`, `MaxHeaderBytes`) and `http.MaxBytesReader` body limiting on all handler paths. Node bootstrap session now performs bounded exponential backoff retry for timeout errors only (up to `BootstrapRetryMaxAttempts`), skips immediately for connection-refused, and aborts immediately for context cancellation. `BootstrapEndpointAttempt` now carries `ErrorKind` for structured observability. 12 focused tests added and passing.
+
 ---
 
 ## Current v1 architectural boundaries
@@ -290,14 +292,13 @@ The completed implementation tasks are:
 - `T-0009 — WireGuard-over-mesh direct-path validation`
 - `T-0010 — single relay hop basics`
 - `T-0011 — scheduler baseline and multi-WAN refinement`
+- `T-0012 — control-plane transport hardening`
 
 The next practical implementation task is:
 
-- `T-0012 — control-plane transport hardening`
-
-Or, if a narrower next slice is preferred: scheduler-to-carrier integration
-(wiring Decide() results into DirectCarrier/RelayEgressCarrier), or live path
-quality measurement scaffolding.
+- `T-0013 — scheduler-to-carrier integration` (wiring `Scheduler.Decide()` results
+  into `DirectCarrier` and `RelayEgressCarrier`), or a transport-security maturation
+  task (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
 
 ---
 
@@ -428,8 +429,8 @@ Transitloom is currently a **well-specified and now meaningfully implemented** p
 - no substantive issuance code yet
 
 The correct next move is to keep the `agents/` workspace accurate and continue
-the staged implementation order. T-0011 is complete; next is T-0012 (control-plane
-transport hardening) or a narrower slice: scheduler-to-carrier integration, or
-live path quality measurement scaffolding.
+the staged implementation order. T-0012 is complete; next is T-0013
+(scheduler-to-carrier integration) or a transport-security maturation task
+(QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
 
 ---

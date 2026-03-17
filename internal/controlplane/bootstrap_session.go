@@ -189,7 +189,7 @@ func (c Client) Attempt(ctx context.Context, endpoint string, request BootstrapS
 
 	httpClient := c.HTTPClient
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 3 * time.Second}
+		httpClient = &http.Client{Timeout: BootstrapConnectTimeout}
 	}
 
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+endpoint+BootstrapSessionPath, bytes.NewReader(payload))
