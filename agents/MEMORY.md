@@ -299,7 +299,24 @@ These decisions are settled unless deliberately changed through specs.
 - `ExecuteCandidateRefresh()` is bounded: it only processes targets in the provided list, never scans the whole network, and skips all targets if the bootstrap session is not accepted; skipped targets record an explicit skip reason in `CandidateRefreshDetail`
 - `ExecuteCandidateRefresh()` calls `FetchPathCandidates()` + `StoreCandidates()` per target; it never calls `Scheduler.Decide()` or activates carriers; refresh updates `CandidateStore` only — the scheduler decision point is deliberately separate
 - `CandidateRefreshResult` carries `Attempted`, `Refreshed`, `Failed`, `Skipped` counts plus per-association `Details`; `ReportLines()` surfaces this for operator review
-- Active probe scheduling loop (driving the registry and quality store with real probe results) is NOT yet implemented; `SelectCandidateRefreshTargets()` and `ExecuteCandidateRefresh()` exist and are correct but callers must drive the refresh lifecycle externally
+- Active probe scheduling loop is now implemented in `internal/node/probe_scheduler.go` (T-0029): `RunProbeLoop()` drives `SelectProbeTargets()` + `ExecuteProbeRound()` on a ticker; callers start it as a goroutine for background operation
+
+---
+
+## Durable active probe scheduling decisions
+
+These decisions are settled unless deliberately changed through specs.
+
+- `ProbeSchedulerConfig` in `internal/node` configures the bounded active probe loop: `ProbeInterval` (default 30s) and `MaxTargetsPerRound` (default 10); both bounds are explicit and structural — they prevent uncontrolled fan-out
+- `ProbeTarget` is the ephemeral probe work item: `Host`, `Port`, `Reason` (targeted-first discipline), `PathIDs` (quality-store linkage); it bridges `EndpointRegistry` (address reachability) and `PathQualityStore` (scheduling quality inputs)
+- `SelectProbeTargets()` builds a bounded targeted probe candidate list from `EndpointRegistry`: unverified endpoints first (priority), then stale/failed (revalidation); deduplicates by host:port; enforces maxTargets; uses `BuildCandidatesFromEndpoints` to preserve targeted-first discipline (no port-range guessing)
+- `ExecuteProbeRound()` wires probe results into two distinct layers: (1) `registry.ApplyProbeResult()` — endpoint freshness/verification state; (2) `qualityStore.RecordProbeResult()` per PathID — RTT/jitter/loss for scheduling quality; the two layers serve different downstream consumers and must not be merged
+- Absent measurement vs failed measurement is explicit: empty `PathIDs` → endpoint freshness updated but quality store not touched (path is "unmeasured", not "failed"); non-empty `PathIDs` with `Reachable=false` → quality store records a failure (confidence decreases, loss rises) — "measured and failed"
+- `BuildPathIDMap()` builds "host:port" → `[]pathID` linkage from two sources: (1) config-derived inputs (`assocID + ":direct"` for direct endpoints); (2) coordinator-distributed candidates (`CandidateID` for each `RemoteEndpoint`); both are included when they reference the same host:port
+- `RunProbeLoop()` is the bounded ticker-driven goroutine helper: fires immediately on start (cold-start probe), then every `ProbeInterval`; `onRound` callback provides observability; context cancellation stops cleanly; the loop does NOT call `Scheduler.Decide()` or activate carriers — it only drives probe execution and wires results
+- `BuildDistributedProbeTargets()` builds probe targets from `CandidateStore` distributed candidates that have a known `RemoteEndpoint`; distinct from `SelectProbeTargets()` which reads `EndpointRegistry`; both are targeted-first
+- Probe scheduling is explicitly separate from: hysteresis/switching policy (`DirectRelayFallbackPolicy`, T-0024 scope), candidate refresh automation (`ExecuteCandidateRefresh`), and scheduler path decisions (`Scheduler.Decide`)
+- `ProbeRoundResult.ReportLines()` is the primary operator-facing observability surface for one probe round; it shows selected/reachable/unreachable/errors counts and per-target details including RTT and quality path IDs
 
 ---
 

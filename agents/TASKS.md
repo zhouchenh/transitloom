@@ -50,9 +50,34 @@ Transitloom does **not** yet have meaningful implementation of:
 
 ## Active task
 
-None. T-0023 has been completed. See queued tasks below for the next work.
+None. T-0029 has been completed. See queued tasks below for the next work.
 
 ## Recently completed
+
+### T-0029 — active probe scheduling and path usability signal wiring basics
+**status:** completed
+**task file:** `agents/tasks/T-0029-active-probe-scheduling-and-path-usability-signal-wiring-basics.md`
+
+Implemented the first bounded active probe scheduling loop and path-usability
+signal wiring in `internal/node/probe_scheduler.go`. Added:
+`ProbeSchedulerConfig` (ProbeInterval, MaxTargetsPerRound), `ProbeTarget`
+(host:port + PathIDs for quality-store linkage), `ProbeRoundResult`/`ProbeRoundDetail`
+for operator-visible observability, `BuildPathIDMap()` (maps "host:port" →
+path-quality-store IDs from config-derived and distributed candidates),
+`SelectProbeTargets()` (bounded targeted selection from EndpointRegistry;
+unverified first, then stale/failed; deduplicates; enforces maxTargets),
+`ExecuteProbeRound()` (wires results into EndpointRegistry.ApplyProbeResult
+and PathQualityStore.RecordProbeResult as distinct layers; tracks absent vs
+failed measurement; context-aware; executor-error handling),
+`BuildDistributedProbeTargets()` (probe targets from CandidateStore for
+coordinator-distributed candidates), `RunProbeLoop()` (bounded ticker-driven
+goroutine helper with cold-start probe and onRound callback for observability).
+Endpoint freshness and path quality remain distinct update layers throughout.
+Probe scheduling is separate from fallback/switching policy (T-0024 scope).
+22 focused tests added and passing: target selection, bounded fan-out, targeted-
+first discipline, absent vs failed measurement, endpoint freshness update,
+quality store update, executor error handling, context cancellation, path ID
+mapping, and end-to-end integration test. `go build ./...` and `go test ./...` pass.
 
 ### T-0023 — direct-relay fallback and recovery basics
 **status:** completed

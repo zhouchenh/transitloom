@@ -10,7 +10,7 @@ Active probe scheduling and path usability signal wiring basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 
