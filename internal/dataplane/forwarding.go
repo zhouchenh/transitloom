@@ -1,7 +1,7 @@
 // Package dataplane implements Transitloom's data-plane runtime behavior.
 //
-// This package currently contains only direct raw UDP carriage — the first
-// real data-plane slice. It does not implement relay, scheduler, multi-WAN,
+// This package contains direct raw UDP carriage and coordinator relay-assisted
+// one-hop raw UDP carriage. It does not implement scheduler, multi-WAN,
 // encrypted, or TCP carriage behavior.
 //
 // Key architectural constraints preserved here:
@@ -18,8 +18,14 @@
 //     sends traffic into the mesh. The local target is the service
 //     binding's port where inbound carried traffic is delivered.
 //
-//   - Direct-only: this implementation handles only direct paths between
-//     peers, not relay-assisted paths.
+//   - Direct and relay-assisted carriage are distinct modes. DirectCarrier
+//     handles direct paths; RelayCarrier handles coordinator relay paths.
+//     These must not be conflated.
+//
+//   - Single relay hop: relay-assisted carriage allows exactly one relay
+//     hop (source → relay → destination). No relay chains are allowed in
+//     v1. This constraint is enforced by the relay type model: there is
+//     no mechanism in RelayForwardingEntry for a second forwarding step.
 package dataplane
 
 import (
@@ -99,7 +105,7 @@ func (e *ForwardingEntry) Validate() error {
 		return fmt.Errorf("dest_service: %w", err)
 	}
 	if !e.DirectOnly {
-		return fmt.Errorf("only direct carriage is supported; relay, scheduler, and multi-WAN are not implemented")
+		return fmt.Errorf("ForwardingEntry is for direct carriage only; for relay-assisted carriage use RelayForwardingEntry or RelayEgressEntry")
 	}
 	return nil
 }

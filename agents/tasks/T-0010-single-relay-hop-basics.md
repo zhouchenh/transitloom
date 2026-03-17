@@ -10,7 +10,7 @@ Single relay hop basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 
@@ -289,6 +289,34 @@ Be explicit about whether the first relay role is:
 - node relay
 
 Do not blur those if only one is actually implemented first.
+
+---
+
+## Implementation notes
+
+Coordinator relay was chosen as the first relay role (simpler first slice).
+
+### Files created or modified
+
+- `internal/dataplane/relay.go` (new): `RelayForwardingEntry`, `RelayForwardingTable`, `RelayCarrier` (coordinator); `RelayEgressEntry`, `RelayEgressTable`, `RelayEgressCarrier` (source node); builders `BuildRelayForwardingEntry`, `BuildRelayEgressEntry`; status reporting `ReportRelayCarriageStatus`
+- `internal/dataplane/relay_test.go` (new): 17 tests including flagship end-to-end single-hop carriage test, structural single-hop constraint enforcement test, and direct-vs-relay distinction test
+- `internal/node/relay_path.go` (new): `RelayPathRuntime`, `RelayEgressActivation`, `RelayPathResult`, `BuildRelayEgressActivationInputs`, `ActivateRelayEgressPaths`
+- `internal/coordinator/relay.go` (new): `CoordinatorRelayRuntime`, `RelayActivation`, `RelayActivationResult`, `ActivateRelayForAssociation`
+- `internal/config/common.go` (modified): added `RelayEndpoint` field to `AssociationConfig`
+- `internal/dataplane/forwarding.go` (modified): updated DirectOnly error message to mention relay types; updated package doc to mention relay-assisted carriage scope
+
+### Key architectural decisions made during implementation
+
+- **Per-association relay listen port for zero overhead**: Coordinator allocates a distinct UDP port per association for relaying; the association is identified by which port received the packet, not by in-band content. This is the only option that preserves zero in-band overhead at the relay.
+- **Destination delivery unchanged**: `DirectCarrier.StartDelivery` is reused for relay-assisted delivery at the destination side. Delivery behavior is identical regardless of whether packets arrived via direct or relay path. No separate "relay delivery" type was created.
+- **Single-hop structurally enforced**: `RelayForwardingEntry` has only a `DestMeshAddr` (terminal endpoint) with no next-relay or chain field. Relay chains cannot be constructed; the constraint is structural, not a runtime check.
+- **Separate types for direct vs relay**: `ForwardingEntry` (direct), `RelayForwardingEntry` (coordinator relay), and `RelayEgressEntry` (source egress) are distinct incompatible types. No architectural conflation is possible.
+- **Relay and egress carriers are independent**: `RelayCarrier` and `RelayEgressCarrier` are separate runtime objects with separate handle maps. Each manages its own per-association goroutines.
+
+### Verification
+
+- `go build ./...`: success
+- `go test ./...`: all pass (17 new relay tests + all existing tests)
 
 ---
 

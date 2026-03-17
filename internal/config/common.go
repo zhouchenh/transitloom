@@ -171,4 +171,22 @@ type AssociationConfig struct {
 	// Optional. When zero, no inbound delivery listener is started for
 	// this association.
 	MeshListenPort uint16 `yaml:"mesh_listen_port,omitempty"`
+
+	// RelayEndpoint is the coordinator relay's per-association UDP address
+	// for relay-assisted raw UDP carriage (e.g., "10.0.0.1:51840"). When
+	// set, the source node sends outbound packets here (to the coordinator
+	// relay) instead of directly to the destination node.
+	//
+	// v1 constraint: exactly one relay hop is allowed. The coordinator
+	// forwards received packets to the destination node's mesh address.
+	// No relay chains are permitted.
+	//
+	// This is a bootstrap-only convenience for early relay-path testing.
+	// In the full system, relay endpoint addresses will come from
+	// coordinator-distributed relay candidates, not from static node config.
+	//
+	// Optional. When empty, relay-assisted egress is not started for this
+	// association. DirectEndpoint and RelayEndpoint are mutually exclusive
+	// for a given carriage path; at most one should be set per association.
+	RelayEndpoint string `yaml:"relay_endpoint,omitempty"`
 }

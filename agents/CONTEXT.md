@@ -172,11 +172,12 @@ registration path.
 - no live certificate-chain validation during sessions
 - no service discovery implementation
 - no live association lifecycle management or policy evaluation
-- no relay behavior
 - no scheduler implementation
 - no multi-WAN aggregation
 
-The first WireGuard-over-mesh direct-path validation now works end-to-end. Direct raw UDP carriage is wired into the node startup flow via `DirectPathRuntime`. Standard WireGuard can use Transitloom local ingress ports as peer endpoints on a direct path with zero in-band overhead. Relay, scheduler, and multi-WAN support are still not implemented.
+The first WireGuard-over-mesh direct-path validation now works end-to-end. Direct raw UDP carriage is wired into the node startup flow via `DirectPathRuntime`. Standard WireGuard can use Transitloom local ingress ports as peer endpoints on a direct path with zero in-band overhead.
+
+Single relay hop basics (T-0010) are now implemented. `RelayCarrier` (coordinator relay), `RelayEgressCarrier` (source node egress), and associated forwarding tables exist in `internal/dataplane`. `CoordinatorRelayRuntime` and `RelayPathRuntime` exist for integration. The single-hop constraint is structurally enforced; destination delivery reuses the existing `DirectCarrier.StartDelivery` path. Scheduler and multi-WAN support are still not implemented.
 
 ---
 
@@ -286,7 +287,7 @@ The completed implementation tasks are:
 
 The next practical implementation task is:
 
-- `T-0010 — single relay hop basics`
+- `T-0011 — scheduler baseline and multi-WAN refinement`
 
 That should remain the next implementation slice unless the task system is deliberately reprioritized.
 
@@ -415,10 +416,11 @@ Transitloom is currently a **well-specified and now meaningfully implemented** p
 - verified bootstrap-only association creation scaffolding with explicit intent validation, coordinator-side in-memory association store, per-association accept/reject results, and clear separation from service registration and path/forwarding behavior
 - verified direct raw UDP carriage: ForwardingTable with association-bound lookup, DirectCarrier with local ingress listeners and local target delivery, zero in-band overhead, and explicit direct-only scope
 - verified WireGuard-over-mesh direct-path validation: `DirectPathRuntime` wires carriage into node startup, end-to-end delivery works with zero in-band overhead, local ingress and local target remain distinct, standard WireGuard can use Transitloom local ingress ports as peer endpoints
+- verified single relay hop basics: `RelayForwardingEntry`/`RelayForwardingTable`/`RelayCarrier` (coordinator relay), `RelayEgressEntry`/`RelayEgressTable`/`RelayEgressCarrier` (source node relay egress), `CoordinatorRelayRuntime`, `RelayPathRuntime`, end-to-end single-hop carriage test proves local app → relay egress → coordinator relay → mesh delivery → local target with zero overhead; single-hop constraint structurally enforced; direct vs relay carriage kept architecturally distinct
 - no substantive issuance code yet
 
 The correct next move is to keep the `agents/` workspace accurate and continue
-the staged implementation order, moving next into single relay hop basics
-(T-0010) or a deliberately split prerequisite if that proves safer.
+the staged implementation order, moving next into scheduler baseline and
+multi-WAN refinement (T-0011).
 
 ---

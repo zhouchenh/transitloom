@@ -50,11 +50,29 @@ Transitloom does **not** yet have meaningful implementation of:
 
 ## Active task
 
-No implementation task is currently marked active. The next task is T-0010.
+No task is currently active.
+
+The next task to pick up is **T-0011 — scheduler baseline and multi-WAN refinement**.
 
 ---
 
 ## Recently completed
+
+### T-0010 — single relay hop basics
+**status:** completed
+**task file:** `agents/tasks/T-0010-single-relay-hop-basics.md`
+
+Implemented the first single-relay-hop raw UDP carriage path. Defined
+`RelayForwardingEntry`/`RelayForwardingTable` and `RelayCarrier` for the
+coordinator relay role, `RelayEgressEntry`/`RelayEgressTable` and
+`RelayEgressCarrier` for the source node relay egress role. Added
+`CoordinatorRelayRuntime` and `RelayPathRuntime` integration types.
+Destination-side delivery reuses existing `DirectCarrier.StartDelivery`
+unchanged. Added `RelayEndpoint` to `AssociationConfig`. Added 17 focused tests
+including a flagship end-to-end single-hop carriage test (local app → relay
+egress → coordinator relay → mesh delivery → local target) and structural
+enforcement of the single-hop constraint. `go build ./...` and `go test ./...`
+both pass.
 
 ### T-0009 — WireGuard-over-mesh direct-path validation
 **status:** completed
@@ -134,7 +152,7 @@ multi-WAN, or encrypted carriage support.
 
 ## Queued tasks
 
-The next implementation task should be `T-0010 — single relay hop basics`.
+The next implementation task is `T-0011 — scheduler baseline and multi-WAN refinement`.
 
 ---
 
@@ -169,7 +187,7 @@ The main risk right now is **architecture drift during early implementation**, n
 Right now, prioritize:
 
 1. keeping specs, docs, and agent context consistent
-2. building on the completed config, trust-bootstrap, node bootstrap, control-session, service-registration, association, and direct raw UDP carriage foundation with WireGuard-over-mesh direct-path validation
+2. building on the completed config, trust-bootstrap, node bootstrap, control-session, service-registration, association, direct raw UDP carriage, WireGuard-over-mesh direct-path validation, and single relay hop foundation
 3. avoiding premature networking/transport complexity
 4. preserving the v1 boundaries already chosen
 5. continuing `agents/` workspace maintenance as implementation progresses

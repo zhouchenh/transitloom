@@ -144,6 +144,13 @@ These distinctions are important and must not be casually collapsed.
 - `AssociationConfig` now carries an optional `mesh_listen_port` field for per-association inbound delivery; because zero in-band overhead means no association header, the association is identified by which mesh listener port received the packet
 - `DirectPathRuntime` (in `internal/node`) combines a `ForwardingTable` and `DirectCarrier` into the minimum node-runtime integration needed for direct-path WireGuard-over-mesh
 - Node startup (`cmd/transitloom-node/main.go`) now wires direct-path carriage into the bootstrap flow: after association creation, it builds activation inputs from config + coordinator results, activates direct paths, and stays running if carriage is active
+- `AssociationConfig` now carries an optional `relay_endpoint` field for bootstrap-only relay-assisted egress; `DirectEndpoint` and `RelayEndpoint` are mutually exclusive for a given carriage path; at most one should be set per association
+- Relay-assisted carriage uses a per-association listen port on the coordinator to identify associations without in-band headers; this is the only mechanism compatible with zero in-band overhead at the relay hop
+- `RelayForwardingEntry` (coordinator relay) and `RelayEgressEntry` (source node egress) are separate incompatible types from `ForwardingEntry` (direct carriage); they must never be conflated
+- `RelayForwardingEntry` has only a `DestMeshAddr` terminal field and no next-relay or chain field; this structurally prevents relay chains and enforces the v1 single-hop constraint without runtime checks
+- Destination-side delivery for relay-assisted carriage is handled by the existing `DirectCarrier.StartDelivery` with an existing `ForwardingEntry`; the delivery path is identical for direct and relay-assisted traffic; no separate "relay delivery" type was created
+- `RelayPathRuntime` (in `internal/node`) manages source-node relay egress: `RelayEgressTable` + `RelayEgressCarrier`
+- `CoordinatorRelayRuntime` (in `internal/coordinator`) manages coordinator relay forwarding: `RelayForwardingTable` + `RelayCarrier`
 
 ---
 
