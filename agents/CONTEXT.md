@@ -172,12 +172,16 @@ registration path.
 - no live certificate-chain validation during sessions
 - no service discovery implementation
 - no live association lifecycle management or policy evaluation
-- no scheduler implementation
-- no multi-WAN aggregation
+- no scheduler-to-carrier integration (Scheduler.Decide() results not yet wired into DirectCarrier or RelayEgressCarrier)
+- no live path quality measurement (RTT/jitter/loss from real traffic or probes)
+- no multi-path carrier load balancing at the socket level
+- no coordinator-distributed path candidates
 
 The first WireGuard-over-mesh direct-path validation now works end-to-end. Direct raw UDP carriage is wired into the node startup flow via `DirectPathRuntime`. Standard WireGuard can use Transitloom local ingress ports as peer endpoints on a direct path with zero in-band overhead.
 
-Single relay hop basics (T-0010) are now implemented. `RelayCarrier` (coordinator relay), `RelayEgressCarrier` (source node egress), and associated forwarding tables exist in `internal/dataplane`. `CoordinatorRelayRuntime` and `RelayPathRuntime` exist for integration. The single-hop constraint is structurally enforced; destination delivery reuses the existing `DirectCarrier.StartDelivery` path. Scheduler and multi-WAN support are still not implemented.
+Single relay hop basics (T-0010) are implemented. `RelayCarrier` (coordinator relay), `RelayEgressCarrier` (source node egress), and associated forwarding tables exist in `internal/dataplane`. `CoordinatorRelayRuntime` and `RelayPathRuntime` exist for integration. The single-hop constraint is structurally enforced; destination delivery reuses the existing `DirectCarrier.StartDelivery` path.
+
+Scheduler baseline and multi-WAN refinement (T-0011) are now implemented. `internal/scheduler` now contains the first endpoint-owned scheduler: `PathCandidate`, `RelayCandidate`, `PathQuality`, `PathClass`, `HealthState`, `SchedulerDecision`, `Mode`, `ChosenPath`, `Scheduler`, `StripeMatchThresholds`, `AssociationCounters`, `SchedulerStatus`. The scheduler filters candidates by association ID + health, scores by AdminWeight + relay penalty + quality, defaults to `ModeWeightedBurstFlowlet`, and activates `ModePerPacketStripe` only when all paths are within configured thresholds. 25 tests and 2 benchmarks pass. Scheduler-to-carrier integration (wiring Decide() results into DirectCarrier/RelayEgressCarrier) is not yet done.
 
 ---
 
@@ -284,12 +288,16 @@ The completed implementation tasks are:
 - `T-0007 — association basics`
 - `T-0008 — direct raw UDP carriage basics`
 - `T-0009 — WireGuard-over-mesh direct-path validation`
+- `T-0010 — single relay hop basics`
+- `T-0011 — scheduler baseline and multi-WAN refinement`
 
 The next practical implementation task is:
 
-- `T-0011 — scheduler baseline and multi-WAN refinement`
+- `T-0012 — control-plane transport hardening`
 
-That should remain the next implementation slice unless the task system is deliberately reprioritized.
+Or, if a narrower next slice is preferred: scheduler-to-carrier integration
+(wiring Decide() results into DirectCarrier/RelayEgressCarrier), or live path
+quality measurement scaffolding.
 
 ---
 
@@ -420,7 +428,8 @@ Transitloom is currently a **well-specified and now meaningfully implemented** p
 - no substantive issuance code yet
 
 The correct next move is to keep the `agents/` workspace accurate and continue
-the staged implementation order, moving next into scheduler baseline and
-multi-WAN refinement (T-0011).
+the staged implementation order. T-0011 is complete; next is T-0012 (control-plane
+transport hardening) or a narrower slice: scheduler-to-carrier integration, or
+live path quality measurement scaffolding.
 
 ---

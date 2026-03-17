@@ -41,10 +41,10 @@ Transitloom does **not** yet have meaningful implementation of:
 - admission-token issuance or refresh
 - coordinator-side admission-token validation
 - service discovery
-- WireGuard-over-mesh runtime behavior
-- relay data paths
-- scheduler logic
-- multi-WAN aggregation
+- scheduler-to-carrier integration (Decide() results not yet wired into carriers)
+- live path quality measurement (RTT/jitter/loss from real traffic)
+- multi-path carrier load balancing at the socket level
+- coordinator-distributed path candidates
 
 ---
 
@@ -52,11 +52,26 @@ Transitloom does **not** yet have meaningful implementation of:
 
 No task is currently active.
 
-The next task to pick up is **T-0011 — scheduler baseline and multi-WAN refinement**.
+The next task to pick up is **T-0012 — control-plane transport hardening** (or a
+measurement/observability task if that is a better next step).
 
 ---
 
 ## Recently completed
+
+### T-0011 — scheduler baseline and multi-WAN refinement
+**status:** completed
+**task file:** `agents/tasks/T-0011-scheduler-baseline-and-multi-wan-refinement.md`
+
+Implemented the first endpoint-owned scheduler baseline. Defined `PathCandidate`,
+`RelayCandidate`, `PathQuality`, `PathClass`, `HealthState` (distinct from
+ForwardingEntry), `SchedulerDecision`, `Mode`, `ChosenPath`. Implemented
+`Scheduler.Decide()`: filters by association ID + health, scores by AdminWeight +
+relay penalty + quality, selects ModeWeightedBurstFlowlet as default,
+ModePerPacketStripe only when all paths are within `StripeMatchThresholds` (RTT,
+jitter, loss spread, confidence). Added observable `AssociationCounters` and
+`SchedulerStatus`. Added 25 tests and 2 benchmarks (~709 ns/op for 2 candidates).
+`go build ./...` and `go test ./...` both pass.
 
 ### T-0010 — single relay hop basics
 **status:** completed

@@ -10,7 +10,7 @@ Scheduler baseline and multi-WAN refinement
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 

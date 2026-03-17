@@ -101,6 +101,13 @@ These are among the most important v1 boundaries.
 - v1 default scheduler is **weighted burst/flowlet-aware**
 - Per-packet striping is allowed only when paths are **closely matched**
 - Multi-WAN aggregation is still a primary practical target and should influence design choices
+- `PathCandidate` is the scheduler's input type for deciding which paths to use; it is explicitly distinct from `RelayCandidate`, `ForwardingEntry`, `RelayForwardingEntry`, and `SchedulerDecision`
+- `RelayCandidate` represents the relay intermediate itself; `PathCandidate` represents a resolved path that may use a relay; these must not be collapsed (spec/v1-object-model.md sections 16-17)
+- `StripeMatchThresholds` defines the conservative gate for per-packet striping: RTT spread, jitter spread, loss spread, minimum confidence; all must be within thresholds and all paths must be measured for striping to activate
+- `Scheduler.Decide()` is the scheduling authority; it runs at the source endpoint only; relays do not run Decide(); this preserves endpoint-owned scheduling
+- `SchedulerDecision.Reason` is always non-empty; it is required for observability and must explain the decision in plain text
+- `AssociationCounters` (atomic) tracks per-association decision/mode/striping counts; `SchedulerStatus` exposes a snapshot for operator review
+- Relay paths are scored with a penalty (`relayPenalty = 10`) to preserve direct-path preference when quality is comparable; this matches the spec requirement that direct paths are preferred when they are healthy enough and competitively useful
 
 ---
 
