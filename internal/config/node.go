@@ -12,6 +12,7 @@ type NodeConfig struct {
 	Services              []ServiceConfig              `yaml:"services"`
 	Associations          []AssociationConfig          `yaml:"associations,omitempty"`
 	LocalIngress          LocalIngressPolicyConfig     `yaml:"local_ingress"`
+	Profiles              []ProfileConfig              `yaml:"profiles,omitempty"`
 	// ExternalEndpoint carries explicitly configured external reachability
 	// information for this node. This is distinct from local service bindings,
 	// local ingress ports, and mesh listener ports. It represents what remote
@@ -68,10 +69,12 @@ func (c NodeConfig) Validate() error {
 	}
 
 	for i, assoc := range c.Associations {
-		validateAssociation(fmt.Sprintf("associations[%d]", i), assoc, serviceNames, &errs)
+		validateAssociation(fmt.Sprintf("associations[%d]", i), assoc, serviceNames, c.Profiles, &errs)
 	}
 
 	validateExternalEndpoint("external_endpoint", c.ExternalEndpoint, &errs)
+
+	validateProfiles("profiles", c.Profiles, &errs)
 
 	if c.Relay.MaxAssociations < 0 {
 		errs.add("relay.max_associations", "must be zero or greater")

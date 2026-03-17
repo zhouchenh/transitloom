@@ -413,6 +413,7 @@ multi-WAN, or encrypted carriage support.
 ## Queued tasks
 
 The next implementation tasks are:
+- [x] **T-0028**: config profile and policy bundling basics
 - runtime integration of distributed path candidates into the scheduler/carrier selection flow
 - node enrollment flow (certificate issuance)
 - application-layer admission-token enforcement on the secure control transport

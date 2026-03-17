@@ -255,4 +255,12 @@ type AssociationConfig struct {
 	// association. DirectEndpoint and RelayEndpoint are mutually exclusive
 	// for a given carriage path; at most one should be set per association.
 	RelayEndpoint string `yaml:"relay_endpoint,omitempty"`
+
+	// Profile is the name of a ProfileConfig defined in the node's Profiles list.
+	// It applies a reusable bundle of policy settings to this association.
+	Profile string `yaml:"profile,omitempty"`
+
+	// PolicyOverrides allows inline policy settings that override the chosen
+	// Profile or the system defaults.
+	PolicyOverrides *PolicyBundle `yaml:"policy_overrides,omitempty"`
 }

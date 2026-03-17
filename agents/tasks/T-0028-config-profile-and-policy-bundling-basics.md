@@ -10,7 +10,7 @@ Config profile and policy bundling basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 

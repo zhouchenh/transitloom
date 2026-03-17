@@ -326,6 +326,8 @@ The completed implementation tasks are:
 - `T-0020 — quality-aware path selection refinement`
 - `T-0021 — control-plane transport security maturation`
 - `T-0022 — candidate refresh and revalidation automation basics`
+- `T-0025 — operator path diagnostics and explainability basics`
+- `T-0028 — config profile and policy bundling basics`
 
 The next practical implementation tasks are:
 
@@ -528,6 +530,11 @@ provides operator-visible per-association refresh outcomes. Three freshness laye
 explicitly distinct: `EndpointRegistry` (address reachability), `PathQualityStore`
 (RTT/jitter/loss freshness), `CandidateFreshnessStore` (coordinator-distribution freshness).
 26 focused tests added and passing.
+
+T-0028 (config profile and policy bundling basics) is now complete. `ProfileConfig`, `PolicyBundle`, and `EffectivePolicy` are introduced to support explicit, bounded policy resolution.
+Operators can configure profiles at the node level and reference them in associations, with inline overrides if necessary. Resolution layers system defaults, profile settings, and inline overrides.
+`tlctl node config` outputs fully resolved configuration per association for clarity and debuggability.
+Tests added for resolution, override logic, and `tlctl` inspect behavior. No deep inheritance or implicit overrides.
 
 The correct next move is to continue the staged implementation order. Remaining priorities:
 - node enrollment flow (certificate issuance)

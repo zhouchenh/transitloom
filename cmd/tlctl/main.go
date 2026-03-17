@@ -407,6 +407,36 @@ func nodeConfigSummaryLines(cfg config.NodeConfig) []string {
 		}
 		lines = append(lines, fmt.Sprintf("  association: %s -> %s/%s  direct=%s relay=%s",
 			assoc.SourceService, assoc.DestinationNode, assoc.DestinationService, direct, relay))
+
+		var profile *config.ProfileConfig
+		if assoc.Profile != "" {
+			lines = append(lines, fmt.Sprintf("    profile-reference: %s", assoc.Profile))
+			for i := range cfg.Profiles {
+				if cfg.Profiles[i].Name == assoc.Profile {
+					profile = &cfg.Profiles[i]
+					break
+				}
+			}
+		}
+
+		if assoc.PolicyOverrides != nil {
+			lines = append(lines, "    inline-overrides: present")
+		}
+
+		eff := config.ResolvePolicy(profile, assoc.PolicyOverrides)
+		lines = append(lines, fmt.Sprintf("    effective-policy: probing=%dms/%dms fallback=%dms/%dms multi-wan-hysteresis=%dms explainability=%s",
+			eff.ProbingIntervalMs, eff.ProbingTimeoutMs,
+			eff.FallbackDirectToRelayTimeoutMs, eff.FallbackRelayToDirectRecoveryMs,
+			eff.MultiWANHysteresisDelayMs,
+			eff.ObservabilityExplainabilityLevel))
+	}
+
+	// Profiles: defined configuration bundles
+	if len(cfg.Profiles) > 0 {
+		lines = append(lines, fmt.Sprintf("profiles: count=%d", len(cfg.Profiles)))
+		for _, p := range cfg.Profiles {
+			lines = append(lines, fmt.Sprintf("  profile: name=%q", p.Name))
+		}
 	}
 
 	// External endpoint: explicitly configured external reachability.

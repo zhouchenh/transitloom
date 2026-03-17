@@ -329,6 +329,46 @@ func TestNodeConfigSummaryLinesBootstrapCoordinators(t *testing.T) {
 
 // TestNodeConfigSummaryLinesRelayEndpoint verifies relay endpoints appear
 // in association output alongside direct endpoints.
+func TestNodeConfigSummaryLinesProfiles(t *testing.T) {
+	cfg := config.NodeConfig{
+		Identity: config.IdentityMetadata{Name: "node-xi"},
+		Profiles: []config.ProfileConfig{
+			{
+				Name: "aggressive",
+			},
+		},
+		Associations: []config.AssociationConfig{
+			{
+				SourceService:      "svc-a",
+				DestinationNode:    "node-omicron",
+				DestinationService: "svc-b",
+				Profile:            "aggressive",
+				PolicyOverrides: &config.PolicyBundle{
+					MultiWAN: &config.MultiWANPolicyConfig{},
+				},
+			},
+		},
+	}
+	lines := nodeConfigSummaryLines(cfg)
+	joined := strings.Join(lines, "\n")
+
+	if !strings.Contains(joined, "profile-reference: aggressive") {
+		t.Errorf("association must show profile-reference; got:\n%s", joined)
+	}
+	if !strings.Contains(joined, "inline-overrides: present") {
+		t.Errorf("association must show inline-overrides; got:\n%s", joined)
+	}
+	if !strings.Contains(joined, "effective-policy: ") {
+		t.Errorf("association must show effective-policy; got:\n%s", joined)
+	}
+	if !strings.Contains(joined, "profiles: count=1") {
+		t.Errorf("profiles summary must appear; got:\n%s", joined)
+	}
+	if !strings.Contains(joined, `profile: name="aggressive"`) {
+		t.Errorf("profile name must appear; got:\n%s", joined)
+	}
+}
+
 func TestNodeConfigSummaryLinesRelayEndpoint(t *testing.T) {
 	cfg := config.NodeConfig{
 		Identity: config.IdentityMetadata{Name: "node-mu"},

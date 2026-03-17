@@ -325,7 +325,7 @@ func validateForwardedPort(prefix string, fwd ForwardedPortConfig, errs *validat
 	}
 }
 
-func validateAssociation(prefix string, assoc AssociationConfig, serviceNames map[string]struct{}, errs *validationErrors) {
+func validateAssociation(prefix string, assoc AssociationConfig, serviceNames map[string]struct{}, profiles []ProfileConfig, errs *validationErrors) {
 	if strings.TrimSpace(assoc.SourceService) == "" {
 		errs.add(prefix+".source_service", "must be set")
 	} else if _, exists := serviceNames[assoc.SourceService]; !exists {
@@ -345,6 +345,41 @@ func validateAssociation(prefix string, assoc AssociationConfig, serviceNames ma
 	if endpoint := strings.TrimSpace(assoc.RelayEndpoint); endpoint != "" {
 		if _, _, err := net.SplitHostPort(endpoint); err != nil {
 			errs.add(prefix+".relay_endpoint", "must be a valid host:port address")
+		}
+	}
+
+	if assoc.Profile != "" {
+		found := false
+		for _, p := range profiles {
+			if p.Name == assoc.Profile {
+				found = true
+				break
+			}
+		}
+		if !found {
+			errs.add(prefix+".profile", fmt.Sprintf("references unknown profile %q", assoc.Profile))
+		}
+	}
+}
+
+func validateProfiles(prefix string, profiles []ProfileConfig, errs *validationErrors) {
+	names := make(map[string]struct{}, len(profiles))
+	for i, profile := range profiles {
+		profilePrefix := fmt.Sprintf("%s[%d]", prefix, i)
+		if strings.TrimSpace(profile.Name) == "" {
+			errs.add(profilePrefix+".name", "must be set")
+			continue
+		}
+		if _, exists := names[profile.Name]; exists {
+			errs.add(profilePrefix+".name", fmt.Sprintf("duplicate profile name %q", profile.Name))
+		}
+		names[profile.Name] = struct{}{}
+		
+		if profile.Observability != nil && profile.Observability.ExplainabilityLevel != nil {
+			lvl := *profile.Observability.ExplainabilityLevel
+			if lvl != "minimal" && lvl != "standard" && lvl != "debug" {
+				errs.add(profilePrefix+".observability.explainability_level", `must be "minimal", "standard", or "debug"`)
+			}
 		}
 	}
 }
