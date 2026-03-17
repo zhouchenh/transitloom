@@ -10,7 +10,7 @@ tlctl runtime inspection and operator workflows basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 

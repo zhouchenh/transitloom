@@ -188,6 +188,8 @@ Control-plane transport hardening (T-0012) is now implemented. `internal/control
 
 Runtime observability and debugging basics (T-0013) are now implemented. `internal/status` package now provides narrow, explicit summary types: `BootstrapSummary` (node local readiness — not coordinator authorization), `ServiceRegistrySummary` (coordinator service registry snapshot), `AssociationStoreSummary` (coordinator association snapshot), `ScheduledEgressSummary` (applied scheduler/carrier state with live traffic counters). Each type has `ReportLines()` for operator-friendly logging. `ScheduledEgressRuntime.Snapshot()` in `internal/node` returns a live `ScheduledEgressSummary` by combining stored activation results with live carrier counters (`DirectCarrier.IngressStats` / `RelayEgressCarrier.EgressStats`). `BootstrapListener.RuntimeSummaryLines()` in `internal/coordinator` surfaces current service registry and association state. 13 focused tests cover key semantic distinctions (applied vs computed state, stripe-gap visibility, "ready ≠ authorized", "pending ≠ active", bootstrap-placeholder labeling). `go build ./...` and `go test ./...` pass.
 
+tlctl runtime inspection and operator workflows basics (T-0016) are now implemented. `cmd/tlctl/main.go` (previously a stub) now provides six read-oriented subcommands: `node bootstrap` (local identity/admission readiness from disk), `node config` (configured services/associations/external endpoints, labeled as configured-state-only), `node status` (runtime scheduler/carrier state via HTTP status endpoint), `coordinator bootstrap` (trust material readiness from disk), `coordinator config` (configured transport/trust/relay), `coordinator status` (runtime service registry + association state via HTTP endpoint). `internal/status/server.go` adds `StatusServer` (read-only GET /status, text/plain, no mutation surface). Both `transitloom-node` and `transitloom-coordinator` now start the status server if `observability.status.enabled: true` and `observability.status.listen` is set. All output preserves architectural state boundaries: configured ≠ registered/active/verified, bootstrap-ready ≠ coordinator-authorized, DNAT external/local ports preserved separately, service registry and association state remain distinct sections. 12 focused tests in `cmd/tlctl/inspect_test.go`.
+
 External endpoint advertisement and DNAT-aware reachability basics (T-0015) are now implemented. `internal/transport/endpoint.go` defines `ExternalEndpoint`, `EndpointSource` (configured/router-discovered/probe-discovered/coordinator-observed), `VerificationState` (unverified/verified/stale/failed), `RouterDiscoveryHint`, `ProbeResult`, `NewConfiguredEndpoint`, `ValidateAddrPort`, and MarkStale/MarkVerified/MarkFailed state transitions. `internal/config/common.go` now carries `ExternalEndpointConfig` (with `PublicHost` and `ForwardedPorts`) and `ForwardedPortConfig` (with separate `ExternalPort` and `LocalPort` to preserve DNAT-awareness). `NodeConfig` now carries `ExternalEndpoint ExternalEndpointConfig` and validates it. The model explicitly separates local target, local ingress, mesh/runtime port, and external advertised endpoint. Narrow placeholder types for future UPnP/PCP/NAT-PMP discovery and targeted probing are defined. 11 focused test functions covering all modeling behavior pass.
 
 ---
@@ -301,6 +303,7 @@ The completed implementation tasks are:
 - `T-0013 — runtime observability and debugging basics`
 - `T-0014 — scheduler-to-carrier integration`
 - `T-0015 — external endpoint advertisement and DNAT-aware reachability basics`
+- `T-0016 — tlctl runtime inspection and operator workflows basics`
 
 The next practical implementation task is:
 
@@ -435,8 +438,20 @@ Transitloom is currently a **well-specified and now meaningfully implemented** p
 - verified single relay hop basics: `RelayForwardingEntry`/`RelayForwardingTable`/`RelayCarrier` (coordinator relay), `RelayEgressEntry`/`RelayEgressTable`/`RelayEgressCarrier` (source node relay egress), `CoordinatorRelayRuntime`, `RelayPathRuntime`, end-to-end single-hop carriage test proves local app → relay egress → coordinator relay → mesh delivery → local target with zero overhead; single-hop constraint structurally enforced; direct vs relay carriage kept architecturally distinct
 - no substantive issuance code yet
 
+tlctl operator inspection baseline (T-0016) is now implemented. `cmd/tlctl/main.go`
+provides six read-oriented subcommands: `node bootstrap`, `node config`, `node status`,
+`coordinator bootstrap`, `coordinator config`, `coordinator status`. Bootstrap and config
+commands read from disk (no running process needed). Status commands query the
+`observability.status` HTTP endpoint exposed by running processes. `internal/status/server.go`
+adds `StatusServer` (read-only, GET /status only, text/plain). The status server is wired
+into both `transitloom-node` and `transitloom-coordinator` using the existing
+`observability.status` config section. All output preserves architectural boundaries:
+configured ≠ registered/active/verified, bootstrap-ready ≠ coordinator-authorized, DNAT
+external and local ports kept separate, service registration and association state remain
+distinct sections. 12 focused tests added and passing.
+
 The correct next move is to keep the `agents/` workspace accurate and continue
-the staged implementation order. T-0015 is complete; next is transport-security
+the staged implementation order. T-0016 is complete; next is transport-security
 maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback) or path-candidate
 distribution refinement building on the new external endpoint model.
 

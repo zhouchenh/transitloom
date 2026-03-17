@@ -58,6 +58,30 @@ distribution refinement building on the new external endpoint model.
 
 ## Recently completed
 
+### T-0016 — tlctl runtime inspection and operator workflows basics
+**status:** completed
+**task file:** `agents/tasks/T-0016-tlctl-runtime-inspection-and-operator-workflows-basics.md`
+
+Replaced the `tlctl` stub with a practical read-oriented operator inspection CLI.
+Implemented `internal/status/server.go` — a read-only HTTP status server
+(`StatusServer` with `NewStatusServer`/`ListenAndServe`/`/status` GET endpoint,
+text/plain output, no mutation surface). Wired the status server into
+`cmd/transitloom-node/main.go` and `cmd/transitloom-coordinator/main.go` using
+the existing `observability.status` config (enabled+listen address).
+`cmd/tlctl/main.go` now provides six subcommands in `tlctl <role> <action>` form:
+`node bootstrap` (node local readiness from disk, reuses `node.InspectBootstrap`),
+`node config` (configured services/associations/endpoints from config, labels
+"configured" vs "registered"/"active"/"verified"), `node status` (queries HTTP
+status endpoint for scheduler/carrier state), `coordinator bootstrap` (trust
+material from disk, reuses `pki.InspectCoordinatorBootstrap`), `coordinator config`
+(configured transport/trust/relay), `coordinator status` (queries HTTP endpoint for
+registry/association state). All output preserves architectural state boundaries:
+configured ≠ registered, bootstrap-ready ≠ coordinator-authorized, DNAT external
+and local ports kept separate. Added 12 focused tests in `cmd/tlctl/inspect_test.go`
+covering configured-state labeling, service/association/external-endpoint semantics,
+DNAT vs no-DNAT distinction, missing-endpoint "(none)" display, coordinator output
+structure. `go build ./...` and `go test ./...` both pass.
+
 ### T-0015 — external endpoint advertisement and DNAT-aware reachability basics
 **status:** completed
 **task file:** `agents/tasks/T-0015-external-endpoint-advertisement-and-dnat-aware-reachability-basics.md`
