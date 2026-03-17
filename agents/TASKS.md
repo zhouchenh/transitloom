@@ -44,7 +44,7 @@ Transitloom does **not** yet have meaningful implementation of:
 - scheduler-to-carrier integration (completed in T-0014; Decide() results now govern direct vs relay carrier activation)
 - live path quality measurement (RTT/jitter/loss from real traffic)
 - multi-path carrier load balancing at the socket level
-- coordinator-distributed path candidates (now implemented at the distribution/consumption layer; runtime selection integration is future work)
+- coordinator-distributed path candidates (distribution/consumption layer T-0018 done; refinement layer T-0020 done — candidates now enriched by endpoint freshness + quality before Decide(); active probe scheduling loop not yet wired)
 
 ---
 
@@ -55,6 +55,21 @@ No active task.
 ---
 
 ## Recently completed
+
+### T-0020 — quality-aware path selection refinement
+**status:** completed
+**task file:** `agents/tasks/T-0020-quality-aware-path-selection-refinement.md`
+
+Implemented the candidate refinement layer that bridges coordinator-distributed
+path candidates, endpoint freshness, and live quality measurements into realistic
+scheduler inputs. Added `RefinedCandidate`, `CandidateEndpointState`, and
+`RefineCandidates` / `UsableSchedulerCandidates` in `internal/node/candidate_refinement.go`.
+Wired `CandidateStore` and `EndpointRegistry` fields into `ScheduledEgressRuntime`;
+`activateSingleScheduledEgress` now merges distributed (refined) and config-derived
+candidates before `Scheduler.Decide()`. Endpoint freshness (Failed → exclude,
+Stale → health degraded) and quality enrichment remain distinct inputs.
+21 focused tests + 1 benchmark (~355 ns/op for 3 candidates), 5 integration tests
+added to `scheduled_egress_test.go`. `go build ./...` and `go test ./...` both pass.
 
 ### T-0018 — path candidate distribution and consumption basics
 **status:** completed

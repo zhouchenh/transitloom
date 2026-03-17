@@ -250,6 +250,24 @@ These decisions are settled unless deliberately changed through specs.
 
 ---
 
+## Durable candidate refinement decisions
+
+These decisions are settled unless deliberately changed through specs.
+
+- `RefinedCandidate` in `internal/node` is the intermediate form between `DistributedPathCandidate` (coordinator wire format) and `scheduler.PathCandidate` (local runtime scheduler input); it is always produced by `RefineCandidates()` and consumed by `UsableSchedulerCandidates()` before `Scheduler.Decide()`
+- `CandidateEndpointState` has four values: `Unknown` (no registry entry), `Usable` (unverified or verified), `Stale` (was valid, needs revalidation), `Failed` (probe confirmed unreachable); these are distinct from `transport.VerificationState` — conversion is explicit via `verificationToEndpointState()`
+- `RefineCandidates()` applies a strict three-step pipeline per candidate: (1) usability check — missing `RemoteEndpoint` → excluded; (2) endpoint-freshness check — Failed → excluded, Stale → `HealthStateDegraded` but Usable=true; (3) quality enrichment — `FreshQuality()` applied when available; endpoint state and quality enrichment are always kept as distinct inputs
+- Endpoint freshness and measured path quality must never be collapsed into one score; `EndpointState` (from `EndpointRegistry`) reflects address-level reachability; `QualityFresh`/`Candidate.Quality` (from `PathQualityStore`) reflect RTT/jitter/loss; the two inform refinement through separate steps
+- Stale endpoints are degraded (not excluded): stale means the endpoint was valid but needs revalidation; stale candidates remain usable as last-resort fallbacks while revalidation is pending; failed endpoints are excluded because they are confirmed unreachable
+- `checkEndpointFreshness()` returns the most severe state across all registry entries matching a host:port; severity order: Failed (3) > Stale (2) > Usable (1) > Unknown (0); most-severe wins to prevent a usable record from hiding a stale/failed one for the same address
+- Quality enrichment is applied inside `RefineCandidates()` (not by a separate `ApplyCandidates` call on the result); this makes `QualityFresh` visible on `RefinedCandidate` for diagnostics; callers must not call `ApplyCandidates` on `UsableSchedulerCandidates()` output — it would double-apply quality or zero out already-enriched fields
+- `ScheduledEgressRuntime` carries `CandidateStore *CandidateStore` and `EndpointRegistry *transport.EndpointRegistry`; both are nil by default (no regression when unused); `activateSingleScheduledEgress` merges refined distributed candidates with config-derived candidates before `Scheduler.Decide()`
+- Config-derived candidates have quality applied via `runtime.QualityStore.ApplyCandidates(input.PathCandidates)` separately from distributed candidates; the copy target is `candidates[:len(input.PathCandidates)]` to avoid touching the distributed suffix of the merged slice
+- `RefinedCandidate.ReportLine()` produces a single human-readable line per candidate; excluded candidates show `[excluded]: <reason>`; usable candidates show class, endpoint state, quality label, and optional degraded reason — this is the primary operator-facing diagnostic surface for refinement behavior
+- `convertDistributedClass()` maps `DistributedPathCandidateClass` → `scheduler.PathClass` with explicit case handling; it must never collapse relay and direct classes
+
+---
+
 ## Durable WireGuard-over-mesh decisions
 
 - WireGuard is the flagship documented v1 use case

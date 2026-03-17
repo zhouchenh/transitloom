@@ -10,6 +10,7 @@ import (
 	"github.com/zhouchenh/transitloom/internal/scheduler"
 	"github.com/zhouchenh/transitloom/internal/service"
 	"github.com/zhouchenh/transitloom/internal/status"
+	"github.com/zhouchenh/transitloom/internal/transport"
 )
 
 // ScheduledEgressRuntime holds the scheduler and path runtimes for
@@ -28,6 +29,19 @@ import (
 // measurement input layer. The store is optional — without it the scheduler
 // operates on unmeasured (confidence=0) candidates, which is the prior behavior.
 //
+// CandidateStore: when non-nil, coordinator-distributed candidates are loaded
+// for each association and run through the refinement layer (RefineCandidates)
+// before scheduling. Refined distributed candidates are merged with any
+// config-derived candidates already on the ScheduledActivationInput.
+// The CandidateStore is optional — without it the runtime falls back to
+// config-only candidates (prior behavior).
+//
+// EndpointRegistry: when non-nil, used by the refinement layer to check
+// endpoint freshness (stale/failed state) for distributed candidates. A
+// nil EndpointRegistry means endpoint freshness is unknown for all candidates
+// (no probe data available). Distinct from QualityStore: the registry tracks
+// address-level reachability; the quality store tracks RTT/jitter/loss.
+//
 // The mu/lastActivations fields enable Snapshot() to return the applied carrier
 // state after activation. lastActivations records what the scheduler decided
 // and which carrier was actually started for each association.
@@ -36,6 +50,17 @@ type ScheduledEgressRuntime struct {
 	Direct       *DirectPathRuntime
 	Relay        *RelayPathRuntime
 	QualityStore *scheduler.PathQualityStore // optional; nil means no live measurement
+
+	// CandidateStore holds coordinator-distributed path candidates.
+	// When non-nil, distributed candidates are refined and merged into scheduler
+	// inputs for each association. Optional: nil disables distributed candidate use.
+	CandidateStore *CandidateStore
+
+	// EndpointRegistry is the endpoint freshness store used by the refinement
+	// layer to check whether distributed candidate remote endpoints are usable,
+	// stale, or failed. Optional: nil means endpoint freshness is unknown.
+	// Distinct from QualityStore — they track different concerns.
+	EndpointRegistry *transport.EndpointRegistry
 
 	// mu protects lastActivations from concurrent reads and writes.
 	mu sync.RWMutex
@@ -458,18 +483,63 @@ func activateSingleScheduledEgress(
 		CarrierActivated: "none",
 	}
 
-	// Enrich PathCandidates with fresh measured quality before scheduling.
-	// When the QualityStore has fresh measurements for a candidate, the scheduler
-	// receives real RTT/jitter/loss/confidence data instead of zero-value
-	// (unmeasured) quality. This is the live path-quality measurement integration
-	// point: measurement inputs are applied here, at the scheduling decision boundary.
+	// Build the scheduler candidate list for this association.
 	//
-	// If QualityStore is nil (or has no fresh measurement for a candidate), the
-	// candidate's Quality stays zero — the scheduler handles unmeasured candidates
-	// conservatively (eligible for carriage, but cannot activate per-packet striping).
+	// Two candidate sources may be present:
+	//   1. Config-derived candidates (from DirectEndpoint / RelayEndpoint strings).
+	//      These are already on input.PathCandidates. Quality is applied via
+	//      QualityStore.ApplyCandidates below when no distributed candidates replace them.
+	//   2. Coordinator-distributed candidates (from CandidateStore).
+	//      These are run through RefineCandidates, which checks endpoint freshness
+	//      (via EndpointRegistry) and applies quality (via QualityStore) in one step.
+	//
+	// When distributed candidates exist for this association, they are merged
+	// with the config-derived candidates. The scheduler sees all candidates and
+	// picks the best one according to its scoring policy. When no distributed
+	// candidates are available, the config-derived candidates are used as before.
+	//
+	// Endpoint freshness (EndpointRegistry) and measured quality (QualityStore)
+	// are distinct inputs kept separate through the refinement step:
+	//   - Endpoint state affects candidate usability and health classification.
+	//   - Quality enriches RTT/jitter/loss/confidence for fine-grained scoring.
+	// Neither source replaces the other; both are visible in RefinedCandidate fields.
 	candidates := input.PathCandidates
-	if runtime.QualityStore != nil {
-		candidates = runtime.QualityStore.ApplyCandidates(candidates)
+
+	if runtime.CandidateStore != nil {
+		distributed := runtime.CandidateStore.Lookup(input.AssociationID)
+		if len(distributed) > 0 {
+			// Run the refinement layer: endpoint freshness check + quality enrichment.
+			// RefineCandidates returns one RefinedCandidate per input, with explicit
+			// Usable/ExcludeReason/DegradedReason/EndpointState/QualityFresh fields
+			// so that refinement decisions are inspectable rather than opaque.
+			//
+			// Quality enrichment is done inside RefineCandidates (not via a separate
+			// ApplyCandidates call below), so we must NOT call ApplyCandidates again
+			// on the distributed candidates — that would incorrectly zero out the
+			// already-enriched quality for candidates without a quality-store entry.
+			refined := RefineCandidates(distributed, runtime.EndpointRegistry, runtime.QualityStore)
+			distributedCandidates := UsableSchedulerCandidates(refined)
+
+			// Merge distributed candidates into the candidate list.
+			// Config-derived candidates remain as a base; distributed candidates
+			// supplement them. The scheduler sees the full picture and picks the best.
+			// Duplicates by ID cannot occur: config IDs use "assocID:direct/relay"
+			// while distributed IDs use the coordinator-assigned CandidateID.
+			candidates = append(candidates, distributedCandidates...)
+		}
+	}
+
+	// Apply quality enrichment to config-derived candidates (input.PathCandidates).
+	// Distributed candidates have already had quality applied by RefineCandidates above.
+	// We only apply ApplyCandidates to the config-derived portion to avoid double-applying.
+	//
+	// When QualityStore is nil, no enrichment occurs and quality stays zero
+	// (unmeasured, conservative behavior) for all candidates.
+	if runtime.QualityStore != nil && len(input.PathCandidates) > 0 {
+		// Enrich only the config-derived candidates (first len(input.PathCandidates) entries).
+		enriched := runtime.QualityStore.ApplyCandidates(input.PathCandidates)
+		// Replace the config-derived prefix in the merged slice.
+		copy(candidates[:len(input.PathCandidates)], enriched)
 	}
 
 	// Egress decision point: the scheduler runs here, at the source endpoint.

@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"github.com/zhouchenh/transitloom/internal/config"
+	"github.com/zhouchenh/transitloom/internal/controlplane"
 	"github.com/zhouchenh/transitloom/internal/scheduler"
 	"github.com/zhouchenh/transitloom/internal/service"
+	"github.com/zhouchenh/transitloom/internal/transport"
 )
 
 // --- Unit tests: buildPathCandidatesFromEndpoints ---
@@ -790,6 +792,347 @@ func TestScheduledEgressRuntime_QualityStoreApplied(t *testing.T) {
 	relayEnriched := enriched[1]
 	if relayEnriched.Quality.Measured() {
 		t.Error("relay candidate should remain unmeasured (no quality recorded in store)")
+	}
+}
+
+// --- CandidateStore and EndpointRegistry integration tests ---
+
+// TestScheduledEgressRuntime_CandidateStore_NilByDefault verifies that
+// NewScheduledEgressRuntime does not pre-populate CandidateStore or
+// EndpointRegistry. Callers must explicitly wire these in when needed.
+// Nil = prior behavior (config-only candidates), which must remain correct.
+func TestScheduledEgressRuntime_CandidateStore_NilByDefault(t *testing.T) {
+	rt := NewScheduledEgressRuntime()
+	if rt.CandidateStore != nil {
+		t.Error("CandidateStore must be nil by default; callers wire it in explicitly")
+	}
+	if rt.EndpointRegistry != nil {
+		t.Error("EndpointRegistry must be nil by default; callers wire it in explicitly")
+	}
+}
+
+// TestActivateScheduledEgress_InformationalDistributedCandidates verifies that
+// informational distributed candidates (no RemoteEndpoint) are excluded by the
+// refinement layer and do not interfere with config-derived candidate scoring.
+// The config-derived direct path must still be chosen.
+func TestActivateScheduledEgress_InformationalDistributedCandidates(t *testing.T) {
+	wgConn, wgAddr := allocLoopbackUDP(t)
+	defer wgConn.Close()
+
+	meshPreConn, meshPreAddr := allocLoopbackUDP(t)
+	meshPreConn.Close()
+
+	ingressPreConn, ingressPreAddr := allocLoopbackUDP(t)
+	ingressPreConn.Close()
+
+	cfg := makeDirectScheduledCfg(uint16(wgAddr.Port), uint16(ingressPreAddr.Port))
+	associationID := "node-a/wg0:raw-udp->node-b/wg0:raw-udp"
+
+	// Store informational-only distributed candidates (no RemoteEndpoint).
+	// These must be excluded by RefineCandidates and must not break the config path.
+	store := NewCandidateStore()
+	store.Store(associationID, []controlplane.DistributedPathCandidate{
+		{
+			CandidateID:   "dist-c1",
+			AssociationID: associationID,
+			Class:         controlplane.DistributedPathClassDirectPublic,
+			// No RemoteEndpoint: informational only.
+			Note: "direct candidate pending node endpoint advertisement",
+		},
+	})
+
+	rt := NewScheduledEgressRuntime()
+	rt.CandidateStore = store
+	defer rt.Direct.Carrier.StopAll()
+	defer rt.Relay.Carrier.StopAll()
+
+	inputs := []ScheduledActivationInput{
+		{
+			AssociationID:  associationID,
+			SourceNode:     "node-a",
+			SourceService:  service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DestNode:       "node-b",
+			DestService:    service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DirectEndpoint: meshPreAddr.String(),
+			MeshListenPort: uint16(meshPreAddr.Port),
+			PathCandidates: buildPathCandidatesFromEndpoints(associationID, meshPreAddr.String(), ""),
+		},
+	}
+
+	ctx := context.Background()
+	result := ActivateScheduledEgress(ctx, cfg, rt, inputs)
+
+	if result.TotalActive != 1 {
+		t.Fatalf("informational distributed candidates must not block config direct path; "+
+			"got active=%d failed=%d no-eligible=%d reason=%q",
+			result.TotalActive, result.TotalFailed, result.TotalNoEligible,
+			func() string {
+				if len(result.Activations) > 0 {
+					return result.Activations[0].Decision.Reason
+				}
+				return "(no activations)"
+			}())
+	}
+
+	act := result.Activations[0]
+	if act.CarrierActivated != "direct" {
+		t.Fatalf("expected direct carrier, got %q (reason: %s)", act.CarrierActivated, act.Decision.Reason)
+	}
+}
+
+// TestActivateScheduledEgress_FailedEndpointDistributedExcluded verifies that
+// when the EndpointRegistry marks a distributed candidate's endpoint as failed,
+// the refinement layer excludes it. The config-derived direct path is still chosen.
+func TestActivateScheduledEgress_FailedEndpointDistributedExcluded(t *testing.T) {
+	wgConn, wgAddr := allocLoopbackUDP(t)
+	defer wgConn.Close()
+
+	meshPreConn, meshPreAddr := allocLoopbackUDP(t)
+	meshPreConn.Close()
+
+	ingressPreConn, ingressPreAddr := allocLoopbackUDP(t)
+	ingressPreConn.Close()
+
+	cfg := makeDirectScheduledCfg(uint16(wgAddr.Port), uint16(ingressPreAddr.Port))
+	associationID := "node-a/wg0:raw-udp->node-b/wg0:raw-udp"
+
+	// Distributed candidate with a remote endpoint marked failed in the registry.
+	// The refinement layer must exclude it (Usable=false, failed endpoint).
+	distributedEndpoint := "9.9.9.9:4500"
+	store := NewCandidateStore()
+	store.Store(associationID, []controlplane.DistributedPathCandidate{
+		{
+			CandidateID:   "dist-direct-failed",
+			AssociationID: associationID,
+			Class:         controlplane.DistributedPathClassDirectPublic,
+			RemoteEndpoint: distributedEndpoint,
+			AdminWeight:   100,
+		},
+	})
+
+	// Registry marks the distributed endpoint as failed.
+	registry := transport.NewEndpointRegistry()
+	registry.Add(transport.ExternalEndpoint{
+		Host:         "9.9.9.9",
+		Port:         4500,
+		Source:       transport.EndpointSourceConfigured,
+		Verification: transport.VerificationStateFailed,
+		RecordedAt:   time.Now(),
+		StaleAt:      time.Now(),
+	})
+
+	rt := NewScheduledEgressRuntime()
+	rt.CandidateStore = store
+	rt.EndpointRegistry = registry
+	defer rt.Direct.Carrier.StopAll()
+	defer rt.Relay.Carrier.StopAll()
+
+	// Config-derived direct candidate is healthy — must be chosen.
+	inputs := []ScheduledActivationInput{
+		{
+			AssociationID:  associationID,
+			SourceNode:     "node-a",
+			SourceService:  service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DestNode:       "node-b",
+			DestService:    service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DirectEndpoint: meshPreAddr.String(),
+			MeshListenPort: uint16(meshPreAddr.Port),
+			PathCandidates: buildPathCandidatesFromEndpoints(associationID, meshPreAddr.String(), ""),
+		},
+	}
+
+	ctx := context.Background()
+	result := ActivateScheduledEgress(ctx, cfg, rt, inputs)
+
+	if result.TotalActive != 1 {
+		t.Fatalf("failed distributed candidate must not prevent config direct path from being chosen; "+
+			"got active=%d failed=%d no-eligible=%d reason=%q",
+			result.TotalActive, result.TotalFailed, result.TotalNoEligible,
+			func() string {
+				if len(result.Activations) > 0 {
+					return result.Activations[0].Decision.Reason
+				}
+				return "(no activations)"
+			}())
+	}
+
+	act := result.Activations[0]
+	if act.CarrierActivated != "direct" {
+		t.Fatalf("expected direct carrier (config-derived), got %q (reason: %s)",
+			act.CarrierActivated, act.Decision.Reason)
+	}
+}
+
+// TestActivateScheduledEgress_StaleEndpointDistributedDegraded verifies that
+// a distributed candidate with a stale endpoint is degraded (not excluded) by
+// the refinement layer. The config-derived direct path (active health) must
+// still be preferred by the scheduler over the degraded distributed candidate.
+func TestActivateScheduledEgress_StaleEndpointDistributedDegraded(t *testing.T) {
+	wgConn, wgAddr := allocLoopbackUDP(t)
+	defer wgConn.Close()
+
+	meshPreConn, meshPreAddr := allocLoopbackUDP(t)
+	meshPreConn.Close()
+
+	ingressPreConn, ingressPreAddr := allocLoopbackUDP(t)
+	ingressPreConn.Close()
+
+	cfg := makeDirectScheduledCfg(uint16(wgAddr.Port), uint16(ingressPreAddr.Port))
+	associationID := "node-a/wg0:raw-udp->node-b/wg0:raw-udp"
+
+	// Distributed candidate with a stale endpoint — will be degraded, not excluded.
+	store := NewCandidateStore()
+	store.Store(associationID, []controlplane.DistributedPathCandidate{
+		{
+			CandidateID:    "dist-direct-stale",
+			AssociationID:  associationID,
+			Class:          controlplane.DistributedPathClassDirectPublic,
+			RemoteEndpoint: "9.9.9.9:4500",
+			AdminWeight:    100,
+		},
+	})
+
+	registry := transport.NewEndpointRegistry()
+	registry.Add(transport.ExternalEndpoint{
+		Host:         "9.9.9.9",
+		Port:         4500,
+		Source:       transport.EndpointSourceConfigured,
+		Verification: transport.VerificationStateStale,
+		RecordedAt:   time.Now(),
+		StaleAt:      time.Now(),
+	})
+
+	rt := NewScheduledEgressRuntime()
+	rt.CandidateStore = store
+	rt.EndpointRegistry = registry
+	defer rt.Direct.Carrier.StopAll()
+	defer rt.Relay.Carrier.StopAll()
+
+	// Config-derived direct candidate is active — scheduler must prefer it over
+	// the degraded distributed candidate (degradedPenalty in scheduler scoring).
+	inputs := []ScheduledActivationInput{
+		{
+			AssociationID:  associationID,
+			SourceNode:     "node-a",
+			SourceService:  service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DestNode:       "node-b",
+			DestService:    service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DirectEndpoint: meshPreAddr.String(),
+			MeshListenPort: uint16(meshPreAddr.Port),
+			PathCandidates: buildPathCandidatesFromEndpoints(associationID, meshPreAddr.String(), ""),
+		},
+	}
+
+	ctx := context.Background()
+	result := ActivateScheduledEgress(ctx, cfg, rt, inputs)
+
+	// The config direct path (active health) must be activated.
+	// The stale distributed candidate is degraded but still usable as a fallback.
+	if result.TotalActive != 1 {
+		t.Fatalf("stale distributed candidate must not prevent config direct activation; "+
+			"got active=%d failed=%d no-eligible=%d",
+			result.TotalActive, result.TotalFailed, result.TotalNoEligible)
+	}
+
+	act := result.Activations[0]
+	if act.CarrierActivated != "direct" {
+		t.Fatalf("expected direct carrier (active, config-derived) preferred over stale; "+
+			"got %q (reason: %s)", act.CarrierActivated, act.Decision.Reason)
+	}
+}
+
+// TestActivateScheduledEgress_DistributedQualityEnrichment verifies that when
+// a CandidateStore has usable distributed candidates and the QualityStore has
+// fresh measurements for those candidates, the quality is applied before the
+// scheduler makes its decision. This tests the three-layer integration:
+// CandidateStore → RefineCandidates → QualityStore → scheduler.
+func TestActivateScheduledEgress_DistributedQualityEnrichment(t *testing.T) {
+	associationID := "assoc-quality-test"
+
+	store := NewCandidateStore()
+	store.Store(associationID, []controlplane.DistributedPathCandidate{
+		{
+			CandidateID:    "dist-c-measured",
+			AssociationID:  associationID,
+			Class:          controlplane.DistributedPathClassDirectPublic,
+			RemoteEndpoint: "1.2.3.4:4500",
+			AdminWeight:    100,
+		},
+		{
+			CandidateID:     "dist-c-relay",
+			AssociationID:   associationID,
+			Class:           controlplane.DistributedPathClassCoordinatorRelay,
+			IsRelayAssisted: true,
+			RemoteEndpoint:  "5.6.7.8:5000",
+			RelayNodeID:     "relay-1",
+			AdminWeight:     100,
+		},
+	})
+
+	// Record fresh quality for the direct distributed candidate.
+	store2 := scheduler.NewPathQualityStore(scheduler.DefaultQualityMaxAge)
+	store2.RecordProbeResult("dist-c-measured", 15*time.Millisecond, true)
+
+	rt := NewScheduledEgressRuntime()
+	rt.CandidateStore = store
+	rt.QualityStore = store2
+	defer rt.Direct.Carrier.StopAll()
+	defer rt.Relay.Carrier.StopAll()
+
+	// Input with no config-derived PathCandidates: scheduler must use distributed candidates.
+	// The quality-enriched direct candidate must be preferred over the relay.
+	inputs := []ScheduledActivationInput{
+		{
+			AssociationID: associationID,
+			SourceNode:    "node-a",
+			SourceService: service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DestNode:      "node-b",
+			DestService:   service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			// PathCandidates empty: no config-derived candidates.
+			// The scheduler will only see distributed refined candidates.
+		},
+	}
+
+	ctx := context.Background()
+	result := ActivateScheduledEgress(ctx, cfg_stub(), rt, inputs)
+
+	// The scheduler must have decided on a path (not ModeNoEligiblePath).
+	if len(result.Activations) == 0 {
+		t.Fatal("expected at least one activation result")
+	}
+	act := result.Activations[0]
+
+	// The scheduler should have found at least one eligible path from the
+	// distributed candidates (even if carrier activation fails because
+	// input.DirectEndpoint is not wired to distributed RemoteEndpoint yet).
+	if act.Decision.Mode == scheduler.ModeNoEligiblePath {
+		t.Fatalf("scheduler must find eligible distributed candidates; "+
+			"got ModeNoEligiblePath (reason: %s)", act.Decision.Reason)
+	}
+
+	// Verify the quality was enriched: the direct candidate should have been
+	// preferred (direct class, measured quality, no relay penalty).
+	if len(act.Decision.ChosenPaths) == 0 {
+		t.Fatal("expected chosen paths in scheduler decision")
+	}
+	best := act.Decision.ChosenPaths[0]
+	if best.Class.IsRelay() {
+		t.Errorf("quality-enriched direct candidate should be preferred over relay; "+
+			"scheduler chose class=%s (reason: %s)", best.Class, act.Decision.Reason)
+	}
+	// Verify quality was applied: the direct candidate ID should be the one
+	// that had a probe result recorded. Quality enrichment caused it to score
+	// higher than the unmeasured relay candidate.
+	if best.CandidateID != "dist-c-measured" {
+		t.Errorf("expected quality-enriched direct candidate 'dist-c-measured' chosen; "+
+			"got %q (class=%s, reason: %s)", best.CandidateID, best.Class, act.Decision.Reason)
+	}
+}
+
+// cfg_stub returns a minimal NodeConfig for tests that don't need real service config.
+func cfg_stub() config.NodeConfig {
+	return config.NodeConfig{
+		Identity: config.IdentityMetadata{Name: "test-node"},
 	}
 }
 

@@ -174,7 +174,7 @@ registration path.
 - no live association lifecycle management or policy evaluation
 - live path quality measurement basics (T-0019) implemented: PathQualityStore with EWMA RTT/jitter/loss/confidence, freshness-aware staleness, wired into ScheduledEgressRuntime before Scheduler.Decide(); PathQualitySummary in internal/status for observability; probe-result and direct-update entry points present; active probe scheduling loop not yet wired
 - no multi-path carrier load balancing at the socket level
-- coordinator-distributed path candidates (distribution/consumption layer implemented in T-0018; runtime selection integration is future work)
+- coordinator-distributed path candidates (distribution/consumption T-0018 done; refinement layer T-0020 done — `RefineCandidates` applies endpoint freshness + quality enrichment before scheduling; active probe scheduling loop not yet wired)
 
 The first WireGuard-over-mesh direct-path validation now works end-to-end. Direct raw UDP carriage is wired into the node startup flow via `DirectPathRuntime`. Standard WireGuard can use Transitloom local ingress ports as peer endpoints on a direct path with zero in-band overhead.
 
@@ -309,11 +309,11 @@ The completed implementation tasks are:
 - `T-0017 — targeted external endpoint probing and freshness revalidation basics`
 - `T-0018 — path candidate distribution and consumption basics`
 - `T-0019 — live path quality measurement basics`
+- `T-0020 — quality-aware path selection refinement`
 
 The next practical implementation task is:
 
-- transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback), or
-- runtime integration of distributed candidates into the scheduler/carrier selection flow.
+- transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback)
 
 ---
 
@@ -475,9 +475,20 @@ and enriches PathCandidates before scheduling decisions. The quality layer is se
 from candidate existence and applied runtime behavior. `PathQualitySummary` in
 internal/status provides operator-visible freshness reporting.
 
-The correct next move is to keep the `agents/` workspace accurate and continue
-the staged implementation order. Both T-0018 and T-0019 are complete; next is
-transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback) or
-runtime integration of distributed candidates into the scheduler/carrier selection flow.
+T-0020 is now complete: quality-aware path selection refinement. `RefinedCandidate`
+and `CandidateEndpointState` are defined in `internal/node/candidate_refinement.go`.
+`RefineCandidates()` applies a three-step pipeline: (1) usability check — candidates
+without a `RemoteEndpoint` are excluded; (2) endpoint-freshness check — failed endpoints
+are excluded, stale endpoints degrade health to `HealthStateDegraded` but remain usable
+as last-resort fallbacks; (3) quality enrichment — fresh `PathQualityStore` measurements
+are applied. Endpoint freshness and path quality remain distinct inputs throughout.
+`UsableSchedulerCandidates()` extracts the scheduler-ready subset. `ScheduledEgressRuntime`
+now carries `CandidateStore` and `EndpointRegistry` fields; `activateSingleScheduledEgress`
+merges refined distributed candidates with config-derived candidates before `Scheduler.Decide()`.
+Quality enrichment is not double-applied: distributed candidates get quality inside
+`RefineCandidates`, config-derived candidates get quality via `ApplyCandidates` separately.
+21 focused tests + 1 benchmark, 5 integration tests. `go build ./...` and `go test ./...` pass.
+
+The correct next move is transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
 
 ---
