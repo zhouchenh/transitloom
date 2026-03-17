@@ -136,3 +136,15 @@ type NodeRelayConfig struct {
 	Advertise       bool `yaml:"advertise"`
 	MaxAssociations int  `yaml:"max_associations,omitempty"`
 }
+
+// AssociationConfig declares a desired association between a local service
+// and a remote service on another node. This is the node-local config intent;
+// the coordinator validates and records the association separately.
+// Association config is intentionally narrow: it names the source and
+// destination services without implying path selection, relay eligibility,
+// or forwarding-state installation.
+type AssociationConfig struct {
+	SourceService      string `yaml:"source_service"`
+	DestinationNode    string `yaml:"destination_node"`
+	DestinationService string `yaml:"destination_service"`
+}

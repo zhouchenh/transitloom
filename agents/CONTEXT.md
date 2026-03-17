@@ -171,7 +171,7 @@ registration path.
 - no final TCP + TLS 1.3 fallback transport implementation
 - no live certificate-chain validation during sessions
 - no service discovery implementation
-- no association implementation
+- no live association lifecycle management or policy evaluation
 - no raw UDP data path
 - no WireGuard-over-mesh working slice
 - no relay behavior
@@ -281,10 +281,11 @@ The completed implementation tasks are:
 - `T-0004 — node identity and admission-token scaffolding`
 - `T-0005 — minimal node-to-coordinator control session`
 - `T-0006 — service registration basics`
+- `T-0007 — association basics`
 
 The next practical implementation task is:
 
-- `T-0007 — association basics`
+- `T-0008 — direct raw UDP carriage`
 
 That should remain the next implementation slice unless the task system is deliberately reprioritized.
 
@@ -410,7 +411,8 @@ Transitloom is currently a **well-specified and now minimally implemented** proj
 - verified root/coordinator trust bootstrap validation and placeholder reporting
 - verified node identity and admission bootstrap validation, readiness reporting, and invalid-local-state rejection
 - verified bootstrap-only node-to-coordinator control-session scaffolding over the coordinator TCP listener, with explicit non-final-auth semantics
-- no substantive issuance, service-registration, association, or data-plane code yet
+- verified bootstrap-only association creation scaffolding with explicit intent validation, coordinator-side in-memory association store, per-association accept/reject results, and clear separation from service registration and path/forwarding behavior
+- no substantive issuance or data-plane code yet
 
 The correct next move is to keep the `agents/` workspace accurate and continue
 the staged implementation order from the new config, trust-bootstrap,

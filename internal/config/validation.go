@@ -285,6 +285,20 @@ func validateDuration(field, value string, errs *validationErrors) {
 	}
 }
 
+func validateAssociation(prefix string, assoc AssociationConfig, serviceNames map[string]struct{}, errs *validationErrors) {
+	if strings.TrimSpace(assoc.SourceService) == "" {
+		errs.add(prefix+".source_service", "must be set")
+	} else if _, exists := serviceNames[assoc.SourceService]; !exists {
+		errs.add(prefix+".source_service", "must reference a configured service name")
+	}
+	if strings.TrimSpace(assoc.DestinationNode) == "" {
+		errs.add(prefix+".destination_node", "must be set")
+	}
+	if strings.TrimSpace(assoc.DestinationService) == "" {
+		errs.add(prefix+".destination_service", "must be set")
+	}
+}
+
 func isSupportedTransport(transport Transport) bool {
 	return transport == TransportQUIC || transport == TransportTCP
 }

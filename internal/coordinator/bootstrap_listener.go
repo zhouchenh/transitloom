@@ -23,6 +23,7 @@ type BootstrapListener struct {
 	coordinatorName string
 	bootstrap       pki.CoordinatorBootstrapState
 	registry        *ServiceRegistry
+	associations    *AssociationStore
 	listeners       []net.Listener
 	servers         []*http.Server
 }
@@ -36,12 +37,14 @@ func NewBootstrapListener(cfg config.CoordinatorConfig, bootstrap pki.Coordinato
 	}
 
 	registry := NewServiceRegistry()
-	handler := newBootstrapControlHandler(cfg.Identity.Name, bootstrap, registry)
+	associations := NewAssociationStore(registry)
+	handler := newBootstrapControlHandler(cfg.Identity.Name, bootstrap, registry, associations)
 
 	listener := &BootstrapListener{
 		coordinatorName: cfg.Identity.Name,
 		bootstrap:       bootstrap,
 		registry:        registry,
+		associations:    associations,
 		listeners:       make([]net.Listener, 0, len(cfg.Control.TCP.ListenEndpoints)),
 		servers:         make([]*http.Server, 0, len(cfg.Control.TCP.ListenEndpoints)),
 	}
@@ -78,10 +81,12 @@ func (l *BootstrapListener) ReportLines() []string {
 	for _, endpoint := range l.BoundEndpoints() {
 		lines = append(lines, fmt.Sprintf("coordinator bootstrap control listener: http://%s%s", endpoint, controlplane.BootstrapSessionPath))
 		lines = append(lines, fmt.Sprintf("coordinator bootstrap service registration listener: http://%s%s", endpoint, controlplane.ServiceRegistrationPath))
+		lines = append(lines, fmt.Sprintf("coordinator bootstrap association listener: http://%s%s", endpoint, controlplane.AssociationPath))
 	}
 	lines = append(lines,
 		"coordinator bootstrap control note: this endpoint exchanges only bootstrap-readiness snapshots and structured placeholder results",
 		"coordinator bootstrap service note: registered services remain bootstrap-only placeholder state and do not imply discovery or association authorization",
+		"coordinator bootstrap association note: association records are logical connectivity placeholders only; they do not imply path selection, relay eligibility, or forwarding-state installation",
 		"coordinator bootstrap control note: final QUIC+mTLS/TCP+TLS control sessions and live certificate/admission validation are not implemented yet",
 	)
 	return lines
@@ -92,6 +97,13 @@ func (l *BootstrapListener) RegistrySnapshot() []service.Record {
 		return nil
 	}
 	return l.registry.Snapshot()
+}
+
+func (l *BootstrapListener) AssociationSnapshot() []service.AssociationRecord {
+	if l.associations == nil {
+		return nil
+	}
+	return l.associations.Snapshot()
 }
 
 func (l *BootstrapListener) Run(ctx context.Context) error {
@@ -119,7 +131,7 @@ func (l *BootstrapListener) Run(ctx context.Context) error {
 	}
 }
 
-func newBootstrapControlHandler(coordinatorName string, bootstrap pki.CoordinatorBootstrapState, registry *ServiceRegistry) http.Handler {
+func newBootstrapControlHandler(coordinatorName string, bootstrap pki.CoordinatorBootstrapState, registry *ServiceRegistry, associations *AssociationStore) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(controlplane.BootstrapSessionPath, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -178,6 +190,39 @@ func newBootstrapControlHandler(coordinatorName string, bootstrap pki.Coordinato
 
 		response, statusCode := evaluateServiceRegistration(coordinatorName, bootstrap, registry, request)
 		if err := controlplane.WriteServiceRegistrationResponse(w, statusCode, response); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+	mux.HandleFunc(controlplane.AssociationPath, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		request, err := controlplane.DecodeAssociationRequest(r.Body)
+		if err != nil {
+			response := associationResponse(
+				coordinatorName,
+				controlplane.AssociationOutcomeInvalidRequest,
+				controlplane.AssociationReasonInvalidRequest,
+				0,
+				0,
+				nil,
+				fmt.Sprintf("invalid bootstrap association request: %v", err),
+				"bootstrap-only association currently validates request shape plus registered service existence",
+			)
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			if writeErr := controlplane.WriteAssociationResponse(w, http.StatusBadRequest, response); writeErr != nil {
+				http.Error(w, writeErr.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+
+		response, statusCode := evaluateAssociation(coordinatorName, bootstrap, associations, request)
+		if err := controlplane.WriteAssociationResponse(w, statusCode, response); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
@@ -301,6 +346,88 @@ func serviceRegistrationResponse(coordinatorName string, outcome controlplane.Se
 		Results:         results,
 		Details:         trimmedDetails,
 	}
+}
+
+func evaluateAssociation(coordinatorName string, bootstrap pki.CoordinatorBootstrapState, associations *AssociationStore, request controlplane.AssociationRequest) (controlplane.AssociationResponse, int) {
+	evaluation := evaluateBootstrapGate(bootstrap, request.NodeName, request.Readiness)
+	if !evaluation.accepted {
+		reason := controlplane.AssociationReasonBootstrapPrerequisitesNotMet
+		if evaluation.reason == controlplane.BootstrapSessionReasonCoordinatorAwaitingMaterial {
+			reason = controlplane.AssociationReasonCoordinatorAwaitingMaterial
+		}
+		details := append([]string(nil), evaluation.details...)
+		details = append(details, "bootstrap-only association requires the same bootstrap prerequisites as the minimal node-to-coordinator control session")
+		return associationResponse(
+			coordinatorName,
+			controlplane.AssociationOutcomeRejected,
+			reason,
+			0,
+			0,
+			nil,
+			details...,
+		), evaluation.statusCode
+	}
+
+	results := associations.Apply(request.NodeName, request.Associations, time.Now().UTC())
+	acceptedCount, rejectedCount := countAssociationResults(results)
+
+	outcome := controlplane.AssociationOutcomeAccepted
+	reason := controlplane.AssociationReasonCreated
+	switch {
+	case acceptedCount == 0:
+		outcome = controlplane.AssociationOutcomeRejected
+		reason = controlplane.AssociationReasonNoAssociationsCreated
+	case rejectedCount > 0:
+		outcome = controlplane.AssociationOutcomePartial
+		reason = controlplane.AssociationReasonPartiallyCreated
+	}
+
+	return associationResponse(
+		coordinatorName,
+		outcome,
+		reason,
+		acceptedCount,
+		rejectedCount,
+		results,
+		fmt.Sprintf("processed %d association intent(s) from node %q", len(request.Associations), request.NodeName),
+		"bootstrap-only association stores placeholder coordinator records only; it does not imply path selection, relay eligibility, forwarding-state installation, or that traffic can already flow",
+	), http.StatusOK
+}
+
+func associationResponse(coordinatorName string, outcome controlplane.AssociationOutcome, reason controlplane.AssociationReason, acceptedCount, rejectedCount int, results []controlplane.AssociationResult, details ...string) controlplane.AssociationResponse {
+	trimmedDetails := make([]string, 0, len(details)+1)
+	for _, detail := range details {
+		detail = strings.TrimSpace(detail)
+		if detail == "" {
+			continue
+		}
+		trimmedDetails = append(trimmedDetails, detail)
+	}
+	trimmedDetails = append(trimmedDetails, "this is a bootstrap-only association result, not proof of authenticated authorization, path selection, or forwarding-state readiness")
+
+	return controlplane.AssociationResponse{
+		ProtocolVersion: controlplane.BootstrapProtocolVersion,
+		CoordinatorName: coordinatorName,
+		Outcome:         outcome,
+		Reason:          reason,
+		BootstrapOnly:   true,
+		AcceptedCount:   acceptedCount,
+		RejectedCount:   rejectedCount,
+		Results:         results,
+		Details:         trimmedDetails,
+	}
+}
+
+func countAssociationResults(results []controlplane.AssociationResult) (accepted, rejected int) {
+	for _, result := range results {
+		switch result.Outcome {
+		case controlplane.AssociationResultOutcomeCreated:
+			accepted++
+		case controlplane.AssociationResultOutcomeRejected:
+			rejected++
+		}
+	}
+	return accepted, rejected
 }
 
 type bootstrapGateEvaluation struct {

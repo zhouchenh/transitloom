@@ -98,3 +98,17 @@ func (r *ServiceRegistry) Snapshot() []service.Record {
 
 	return records
 }
+
+// snapshotMap returns a shallow copy of the internal records map for use by
+// the association store during validation. The caller must hold no registry
+// lock; this method acquires and releases its own lock.
+func (r *ServiceRegistry) snapshotMap() map[string]service.Record {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	snapshot := make(map[string]service.Record, len(r.records))
+	for k, v := range r.records {
+		snapshot[k] = v
+	}
+	return snapshot
+}

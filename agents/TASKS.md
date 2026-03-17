@@ -51,7 +51,7 @@ Transitloom does **not** yet have meaningful implementation of:
 
 No implementation task is currently marked active.
 
-The next task to start is `T-0007 — association basics`.
+The next task to start is `T-0008 — direct raw UDP carriage`.
 
 ---
 
@@ -94,11 +94,22 @@ coordinator-side in-memory registry, per-service accept/reject results, clear
 separation between service binding/local target and requested local ingress
 intent, and focused node/coordinator/service tests.
 
+### T-0007 — association basics
+**status:** completed
+**task file:** `agents/tasks/T-0007-association-basics.md`
+
+Implemented bootstrap-only association creation over the existing coordinator
+TCP listener. Nodes can request associations between registered services;
+the coordinator validates service existence, rejects self-associations and
+duplicates, stores narrow placeholder association records, and returns
+structured per-association results. Association is kept strictly distinct from
+service registration, path selection, relay eligibility, and forwarding state.
+
 ---
 
 ## Queued tasks
 
-The next implementation task should be `T-0007 — association basics`.
+The next implementation task should be `T-0008 — direct raw UDP carriage`.
 
 ---
 
@@ -133,7 +144,7 @@ The main risk right now is **architecture drift during early implementation**, n
 Right now, prioritize:
 
 1. keeping specs, docs, and agent context consistent
-2. building on the completed config, trust-bootstrap, node bootstrap, bootstrap-only control-session, and service-registration scaffolding with association work
+2. building on the completed config, trust-bootstrap, node bootstrap, bootstrap-only control-session, service-registration, and association scaffolding with direct raw UDP carriage work
 3. avoiding premature networking/transport complexity
 4. preserving the v1 boundaries already chosen
 5. continuing `agents/` workspace maintenance as implementation progresses

@@ -132,6 +132,11 @@ These distinctions are important and must not be casually collapsed.
 - WireGuard should remain generic in the core model
 - Bootstrap-phase service registration stores requested local ingress intent separately from the service binding/local target; it does not allocate a `LocalIngressBinding`
 - Bootstrap-only service registration does not imply authenticated service ownership, service discovery completeness, or association authorization
+- Association creation is strictly distinct from service registration; a registered service does not automatically have associations
+- Bootstrap-only association records are logical connectivity placeholders; they do not imply path selection, relay eligibility, forwarding-state installation, or that traffic can flow
+- Association creation validates that both source and destination services are registered in the coordinator's service registry
+- Self-associations (same node, same service) are rejected
+- Node config carries optional `associations` entries with `source_service`, `destination_node`, `destination_service`; source service type is resolved from local services config; destination service type defaults to raw-udp for v1
 
 ---
 

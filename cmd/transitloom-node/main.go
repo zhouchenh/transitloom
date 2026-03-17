@@ -70,5 +70,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Printf("transitloom-node bootstrap control and service registration reached coordinator %q; authenticated control sessions, discovery, and associations are still not implemented", registration.Response.CoordinatorName)
+	if len(cfg.Associations) > 0 {
+		associationCtx, associationCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer associationCancel()
+
+		association, assocErr := node.AttemptAssociation(associationCtx, cfg, bootstrap, session)
+		for _, line := range association.ReportLines() {
+			log.Print(line)
+		}
+		if assocErr != nil {
+			log.Fatal(assocErr)
+		}
+		if !association.Response.AllCreated() {
+			log.Printf("transitloom-node bootstrap association did not fully succeed with coordinator %q", association.Response.CoordinatorName)
+			os.Exit(1)
+		}
+	}
+
+	log.Printf("transitloom-node bootstrap control, service registration, and association reached coordinator %q; authenticated control sessions, path selection, relay eligibility, and forwarding are still not implemented", registration.Response.CoordinatorName)
 }

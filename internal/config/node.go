@@ -10,6 +10,7 @@ type NodeConfig struct {
 	Control               ControlPreferencesConfig     `yaml:"control"`
 	BootstrapCoordinators []BootstrapCoordinatorConfig `yaml:"bootstrap_coordinators"`
 	Services              []ServiceConfig              `yaml:"services"`
+	Associations          []AssociationConfig          `yaml:"associations,omitempty"`
 	LocalIngress          LocalIngressPolicyConfig     `yaml:"local_ingress"`
 	Discovery             NodeDiscoveryConfig          `yaml:"discovery"`
 	Relay                 NodeRelayConfig              `yaml:"relay"`
@@ -58,6 +59,10 @@ func (c NodeConfig) Validate() error {
 			continue
 		}
 		serviceNames[service.Name] = struct{}{}
+	}
+
+	for i, assoc := range c.Associations {
+		validateAssociation(fmt.Sprintf("associations[%d]", i), assoc, serviceNames, &errs)
 	}
 
 	if c.Relay.MaxAssociations < 0 {
