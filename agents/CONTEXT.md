@@ -327,6 +327,7 @@ The completed implementation tasks are:
 - `T-0021 — control-plane transport security maturation`
 - `T-0022 — candidate refresh and revalidation automation basics`
 - `T-0025 — operator path diagnostics and explainability basics`
+- `T-0026 — path change event history and audit basics`
 - `T-0028 — config profile and policy bundling basics`
 
 The next practical implementation tasks are:
@@ -530,6 +531,14 @@ provides operator-visible per-association refresh outcomes. Three freshness laye
 explicitly distinct: `EndpointRegistry` (address reachability), `PathQualityStore`
 (RTT/jitter/loss freshness), `CandidateFreshnessStore` (coordinator-distribution freshness).
 26 focused tests added and passing.
+
+T-0026 (path change event history and audit basics) is now complete.
+`internal/status/history.go` provides a bounded `EventHistory` store and explicit `EventType`
+definitions for state changes like fallback-to-relay, candidate-excluded, and endpoint-stale.
+`ScheduledEgressRuntime` initializes and populates this history during path activation,
+preserving the boundary between current state and recent history. `ScheduledEgressSummary`
+now includes `RecentEvents`, exposing the history through the status API and `tlctl node status`.
+Tests cover history storage and event generation. `go build ./...` and `go test ./...` pass.
 
 T-0028 (config profile and policy bundling basics) is now complete. `ProfileConfig`, `PolicyBundle`, and `EffectivePolicy` are introduced to support explicit, bounded policy resolution.
 Operators can configure profiles at the node level and reference them in associations, with inline overrides if necessary. Resolution layers system defaults, profile settings, and inline overrides.

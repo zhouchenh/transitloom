@@ -96,6 +96,20 @@ measurement freshness), `CandidateFreshnessStore` (coordinator-distribution fres
 vs absent-quality distinction, architectural boundary enforcement. `go build ./...` and
 `go test ./...` both pass.
 
+### T-0026 — path change event history and audit basics
+**status:** completed
+**task file:** `agents/tasks/T-0026-path-change-event-history-and-audit-basics.md`
+
+Implemented the first bounded path-change event history and audit baseline.
+Added `EventHistory` and `Event` types in `internal/status/history.go` to record
+explicit state changes like fallback-to-relay, recovery-to-direct, candidate-excluded,
+and endpoint-stale. Added `RecentEvents` to `ScheduledEgressSummary` to expose this
+history through the status API and `tlctl node status`. Modified `ScheduledEgressRuntime`
+in `internal/node` to initialize and populate the bounded event history during path
+activation (`ActivateScheduledEgress`), preserving the boundary between current state
+and recent history. Added focused tests for history storage and event generation.
+`go build ./...` and `go test ./...` both pass.
+
 ### T-0025 — operator path diagnostics and explainability basics
 **status:** completed
 **task file:** `agents/tasks/T-0025-operator-path-diagnostics-and-explainability-basics.md`

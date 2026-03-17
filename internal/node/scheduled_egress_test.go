@@ -9,6 +9,7 @@ import (
 	"github.com/zhouchenh/transitloom/internal/controlplane"
 	"github.com/zhouchenh/transitloom/internal/scheduler"
 	"github.com/zhouchenh/transitloom/internal/service"
+	"github.com/zhouchenh/transitloom/internal/status"
 	"github.com/zhouchenh/transitloom/internal/transport"
 )
 
@@ -1165,6 +1166,78 @@ func TestScheduledEgressRuntime_QualityStore_MeasurementDistinctFromCandidate(t 
 	qualSummary := runtime.QualitySnapshot()
 	if qualSummary.TotalMeasured != 1 {
 		t.Errorf("QualitySnapshot should show 1 measured entry, got %d", qualSummary.TotalMeasured)
+	}
+}
+
+func TestRecordActivationEvents(t *testing.T) {
+	history := status.NewEventHistory(10)
+
+	oldActs := []ScheduledEgressActivation{
+		{
+			AssociationID:    "assoc-1",
+			CarrierActivated: "direct",
+			Decision: scheduler.SchedulerDecision{
+				Reason: "direct is good",
+				ChosenPaths: []scheduler.ChosenPath{
+					{CandidateID: "cand-A"},
+				},
+			},
+			Candidates: []status.PathCandidateStatus{
+				{ID: "cand-A", Usable: true, EndpointState: "usable"},
+				{ID: "cand-B", Usable: true, EndpointState: "stale"},
+			},
+		},
+	}
+
+	newActs := []ScheduledEgressActivation{
+		{
+			AssociationID:    "assoc-1",
+			CarrierActivated: "relay", // Fallback to relay
+			Decision: scheduler.SchedulerDecision{
+				Reason: "direct failed, falling back to relay",
+				ChosenPaths: []scheduler.ChosenPath{
+					{CandidateID: "cand-C"},
+				},
+			},
+			Candidates: []status.PathCandidateStatus{
+				{ID: "cand-A", Usable: false, ExcludeReason: "endpoint failed", EndpointState: "failed"},
+				{ID: "cand-B", Usable: true, EndpointState: "usable"},
+			},
+		},
+	}
+
+	recordActivationEvents(history, oldActs, newActs)
+
+	events := history.Snapshot()
+	if len(events) == 0 {
+		t.Fatal("expected events to be recorded")
+	}
+
+	var fallbackFound, excludedFound, stateStaleToUsable, stateUsableToFailed bool
+	for _, e := range events {
+		switch e.Type {
+		case status.EventFallbackToRelay:
+			fallbackFound = true
+		case status.EventCandidateExcluded:
+			excludedFound = true
+		case status.EventEndpointVerified:
+			stateStaleToUsable = true
+		case status.EventEndpointFailed:
+			stateUsableToFailed = true
+		}
+	}
+
+	if !fallbackFound {
+		t.Error("missing EventFallbackToRelay")
+	}
+	if !excludedFound {
+		t.Error("missing EventCandidateExcluded")
+	}
+	if !stateStaleToUsable {
+		t.Error("missing EventEndpointVerified for stale->usable transition")
+	}
+	if !stateUsableToFailed {
+		t.Error("missing EventEndpointFailed for usable->failed transition")
 	}
 }
 

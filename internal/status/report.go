@@ -1,6 +1,9 @@
 package status
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // ReportLines produces human-readable log lines for the bootstrap summary.
 //
@@ -110,6 +113,25 @@ func (s ScheduledEgressSummary) ReportLines() []string {
 			lines = append(lines, fmt.Sprintf(
 				"    candidate %s: %s | class=%s health=%s endpoint=%s quality=%s",
 				c.ID, statusLabel, c.Class, c.Health, c.EndpointState, qualityLabel,
+			))
+		}
+	}
+
+	if len(s.RecentEvents) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, "recent-path-events:")
+		for _, e := range s.RecentEvents {
+			assocStr := ""
+			if e.AssociationID != "" {
+				assocStr = fmt.Sprintf(" assoc=%s", e.AssociationID)
+			}
+			candStr := ""
+			if e.CandidateID != "" {
+				candStr = fmt.Sprintf(" cand=%s", e.CandidateID)
+			}
+			lines = append(lines, fmt.Sprintf(
+				"  [%s] type=%s%s%s msg=%q",
+				e.Timestamp.Format(time.RFC3339), e.Type, assocStr, candStr, e.Message,
 			))
 		}
 	}

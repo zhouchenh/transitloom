@@ -10,7 +10,7 @@ Path change event history and audit basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 

@@ -79,6 +79,10 @@ type ScheduledEgressRuntime struct {
 	// DefaultFallbackConfig automatically.
 	FallbackStore *AssociationFallbackStore
 
+	// EventHistory tracks recent bounded path change events.
+	// Optional: if nil, events are not recorded.
+	EventHistory *status.EventHistory
+
 	// mu protects lastActivations from concurrent reads and writes.
 	mu sync.RWMutex
 	// lastActivations holds the results from the most recent ActivateScheduledEgress
@@ -102,6 +106,7 @@ func NewScheduledEgressRuntime() *ScheduledEgressRuntime {
 		Relay:         NewRelayPathRuntime(),
 		QualityStore:  scheduler.NewPathQualityStore(scheduler.DefaultQualityMaxAge),
 		FallbackStore: NewAssociationFallbackStore(DefaultFallbackConfig()),
+		EventHistory:  status.NewEventHistory(100), // Bounded to last 100 path events
 	}
 }
 
@@ -406,10 +411,129 @@ func ActivateScheduledEgress(
 	// This makes it possible to inspect what the scheduler decided and which
 	// carrier was actually started, even after the initial startup log is gone.
 	runtime.mu.Lock()
+	oldActivations := runtime.lastActivations
 	runtime.lastActivations = append([]ScheduledEgressActivation(nil), result.Activations...)
+
+	if runtime.EventHistory != nil {
+		recordActivationEvents(runtime.EventHistory, oldActivations, result.Activations)
+	}
 	runtime.mu.Unlock()
 
 	return result
+}
+
+func recordActivationEvents(history *status.EventHistory, oldActs, newActs []ScheduledEgressActivation) {
+	oldByAssoc := make(map[string]ScheduledEgressActivation)
+	for _, a := range oldActs {
+		oldByAssoc[a.AssociationID] = a
+	}
+
+	for _, newA := range newActs {
+		oldA, exists := oldByAssoc[newA.AssociationID]
+		if !exists {
+			continue // skip new associations
+		}
+
+		// 1. Carrier change events (fallback / recovery / path change)
+		if oldA.CarrierActivated != newA.CarrierActivated {
+			if oldA.CarrierActivated == "direct" && newA.CarrierActivated == "relay" {
+				history.Record(status.Event{
+					Type:          status.EventFallbackToRelay,
+					AssociationID: newA.AssociationID,
+					Message:       fmt.Sprintf("fallback from direct to relay: %s", newA.Decision.Reason),
+				})
+			} else if oldA.CarrierActivated == "relay" && newA.CarrierActivated == "direct" {
+				history.Record(status.Event{
+					Type:          status.EventRecoveryToDirect,
+					AssociationID: newA.AssociationID,
+					Message:       fmt.Sprintf("recovery from relay to direct: %s", newA.Decision.Reason),
+				})
+			} else {
+				history.Record(status.Event{
+					Type:          status.EventChosenPathChanged,
+					AssociationID: newA.AssociationID,
+					Message:       fmt.Sprintf("carrier changed %s -> %s: %s", oldA.CarrierActivated, newA.CarrierActivated, newA.Decision.Reason),
+				})
+			}
+		} else {
+			// Check if primary path changed within the same carrier
+			oldPrimary := ""
+			if len(oldA.Decision.ChosenPaths) > 0 {
+				oldPrimary = oldA.Decision.ChosenPaths[0].CandidateID
+			}
+			newPrimary := ""
+			if len(newA.Decision.ChosenPaths) > 0 {
+				newPrimary = newA.Decision.ChosenPaths[0].CandidateID
+			}
+			if oldPrimary != "" && newPrimary != "" && oldPrimary != newPrimary {
+				history.Record(status.Event{
+					Type:          status.EventChosenPathChanged,
+					AssociationID: newA.AssociationID,
+					CandidateID:   newPrimary,
+					Message:       fmt.Sprintf("primary path changed %s -> %s: %s", oldPrimary, newPrimary, newA.Decision.Reason),
+				})
+			}
+		}
+
+		// 2. Candidate state change events (excluded/restored, endpoint state)
+		oldCands := make(map[string]status.PathCandidateStatus)
+		for _, c := range oldA.Candidates {
+			oldCands[c.ID] = c
+		}
+
+		for _, newC := range newA.Candidates {
+			oldC, cExists := oldCands[newC.ID]
+			if !cExists {
+				continue
+			}
+
+			// Excluded / Restored
+			if oldC.Usable && !newC.Usable {
+				history.Record(status.Event{
+					Type:          status.EventCandidateExcluded,
+					AssociationID: newA.AssociationID,
+					CandidateID:   newC.ID,
+					Message:       fmt.Sprintf("candidate excluded: %s", newC.ExcludeReason),
+				})
+			} else if !oldC.Usable && newC.Usable {
+				history.Record(status.Event{
+					Type:          status.EventCandidateRestored,
+					AssociationID: newA.AssociationID,
+					CandidateID:   newC.ID,
+					Message:       "candidate restored to usable state",
+				})
+			}
+
+			// Endpoint state
+			if oldC.EndpointState != newC.EndpointState {
+				switch newC.EndpointState {
+				case "stale":
+					history.Record(status.Event{
+						Type:          status.EventEndpointStale,
+						AssociationID: newA.AssociationID,
+						CandidateID:   newC.ID,
+						Message:       fmt.Sprintf("endpoint marked stale (was %s)", oldC.EndpointState),
+					})
+				case "failed":
+					history.Record(status.Event{
+						Type:          status.EventEndpointFailed,
+						AssociationID: newA.AssociationID,
+						CandidateID:   newC.ID,
+						Message:       fmt.Sprintf("endpoint marked failed (was %s)", oldC.EndpointState),
+					})
+				case "usable":
+					if oldC.EndpointState == "stale" || oldC.EndpointState == "failed" {
+						history.Record(status.Event{
+							Type:          status.EventEndpointVerified,
+							AssociationID: newA.AssociationID,
+							CandidateID:   newC.ID,
+							Message:       fmt.Sprintf("endpoint verified usable (was %s)", oldC.EndpointState),
+						})
+					}
+				}
+			}
+		}
+	}
 }
 
 // Snapshot returns a current point-in-time snapshot of the scheduled egress
@@ -475,12 +599,18 @@ func (r *ScheduledEgressRuntime) Snapshot() status.ScheduledEgressSummary {
 		entries = append(entries, entry)
 	}
 
-	return status.ScheduledEgressSummary{
+	summary := status.ScheduledEgressSummary{
 		TotalActive:     totalActive,
 		TotalFailed:     totalFailed,
 		TotalNoEligible: totalNoEligible,
 		Entries:         entries,
 	}
+
+	if r.EventHistory != nil {
+		summary.RecentEvents = r.EventHistory.Snapshot()
+	}
+
+	return summary
 }
 
 // QualitySnapshot returns a point-in-time view of all measured path quality

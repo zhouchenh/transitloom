@@ -122,6 +122,7 @@ type ScheduledEgressSummary struct {
 	TotalFailed     int
 	TotalNoEligible int
 	Entries         []ScheduledEgressEntry
+	RecentEvents    []Event
 }
 
 // ScheduledEgressEntry describes one association's applied carrier state.
