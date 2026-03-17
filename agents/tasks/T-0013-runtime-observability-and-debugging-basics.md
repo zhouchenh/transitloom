@@ -10,7 +10,7 @@ Runtime observability and debugging basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 

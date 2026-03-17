@@ -56,6 +56,24 @@ No active task. Next task from queue: transport-security maturation (QUIC+TLS 1.
 
 ## Recently completed
 
+### T-0013 — runtime observability and debugging basics
+**status:** completed
+**task file:** `agents/tasks/T-0013-runtime-observability-and-debugging-basics.md`
+
+Implemented the first explicit runtime observability and debugging baseline.
+Added `internal/status` package with narrow summary types: `BootstrapSummary`,
+`ServiceRegistrySummary`, `AssociationStoreSummary`, `ScheduledEgressSummary`.
+Each summary preserves architectural state distinctions (configured vs applied,
+bootstrap/cached vs authorized, pending vs active). Added `ReportLines()` on
+each summary type for operator-friendly logging. Added `ScheduledEgressRuntime.Snapshot()`
+in `internal/node` combining stored activation results with live carrier counters
+(direct `IngressStats` / relay `EgressStats`). Added `RuntimeSummaryLines()` to
+coordinator `BootstrapListener` surfacing current registry and association state.
+Added 13 focused tests covering key semantic distinctions (applied vs computed
+carrier state, stripe-gap visibility, "ready ≠ authorized", "pending ≠ active",
+bootstrap-placeholder labeling, zero-counter suppression, etc.).
+`go build ./...` and `go test ./...` both pass.
+
 ### T-0014 — scheduler-to-carrier integration
 **status:** completed
 **task file:** `agents/tasks/T-0014-scheduler-to-carrier-integration.md`
@@ -194,7 +212,6 @@ multi-WAN, or encrypted carriage support.
 ## Queued tasks
 
 The next implementation tasks are:
-- `T-0013 — scheduler-to-carrier integration` (wiring `Decide()` into carriers)
 - transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback)
 
 ---

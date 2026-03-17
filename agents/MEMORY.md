@@ -184,6 +184,19 @@ These distinctions are important and must not be casually collapsed.
 
 ---
 
+## Durable observability decisions
+
+- `internal/status` is the canonical package for runtime status summaries; it contains narrow, explicit types, not a generic telemetry framework
+- `BootstrapSummary` reflects local material coherence only; it must never be labeled as coordinator authorization
+- `ServiceRegistrySummary` and `AssociationStoreSummary` expose coordinator state; bootstrap-only records must always be labeled as placeholders, not as final authenticated state
+- `ScheduledEgressSummary` carries both `SchedulerMode` (computed decision) and `CarrierActivated` (what actually started); these two fields must always appear together so operators can verify alignment; misalignment between them is intentional/observable (e.g., per-packet-stripe decided but direct carrier activated because multi-carrier striping not yet implemented)
+- `ScheduledEgressRuntime.Snapshot()` provides the live observability surface for applied carrier behavior; it merges stored activation results with `DirectCarrier.IngressStats` / `RelayEgressCarrier.EgressStats` counters
+- `BootstrapListener.RuntimeSummaryLines()` exposes the coordinator's current service registry and association state for logging; service registration and association are kept as separate summary sections
+- Status package imports `internal/service` (leaf) only; it must not import `internal/node` or `internal/coordinator` to avoid cycles; callers convert their internal types and pass data to the status constructors
+- ReportLines output must label bootstrap-only / placeholder / local-readiness-only state explicitly — not doing so creates misleading operator output
+
+---
+
 ## Durable implementation-order decisions
 
 Transitloom should be implemented in this order unless a task explicitly justifies a deviation:

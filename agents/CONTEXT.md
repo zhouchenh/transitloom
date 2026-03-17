@@ -186,6 +186,8 @@ Scheduler-to-carrier integration (T-0014) is now implemented. `ScheduledEgressRu
 
 Control-plane transport hardening (T-0012) is now implemented. `internal/controlplane/transport.go` defines named constants for all bootstrap transport timeouts, retry limits, and body size limits. `internal/controlplane/errors.go` defines `TransportErrorKind`, `TransportError`, and `ClassifyTransportError()`. The coordinator bootstrap listener now has full HTTP server timeouts (`ReadTimeout`, `WriteTimeout`, `IdleTimeout`, `MaxHeaderBytes`) and `http.MaxBytesReader` body limiting on all handler paths. Node bootstrap session now performs bounded exponential backoff retry for timeout errors only (up to `BootstrapRetryMaxAttempts`), skips immediately for connection-refused, and aborts immediately for context cancellation. `BootstrapEndpointAttempt` now carries `ErrorKind` for structured observability. 12 focused tests added and passing.
 
+Runtime observability and debugging basics (T-0013) are now implemented. `internal/status` package now provides narrow, explicit summary types: `BootstrapSummary` (node local readiness — not coordinator authorization), `ServiceRegistrySummary` (coordinator service registry snapshot), `AssociationStoreSummary` (coordinator association snapshot), `ScheduledEgressSummary` (applied scheduler/carrier state with live traffic counters). Each type has `ReportLines()` for operator-friendly logging. `ScheduledEgressRuntime.Snapshot()` in `internal/node` returns a live `ScheduledEgressSummary` by combining stored activation results with live carrier counters (`DirectCarrier.IngressStats` / `RelayEgressCarrier.EgressStats`). `BootstrapListener.RuntimeSummaryLines()` in `internal/coordinator` surfaces current service registry and association state. 13 focused tests cover key semantic distinctions (applied vs computed state, stripe-gap visibility, "ready ≠ authorized", "pending ≠ active", bootstrap-placeholder labeling). `go build ./...` and `go test ./...` pass.
+
 ---
 
 ## Current v1 architectural boundaries
@@ -294,12 +296,11 @@ The completed implementation tasks are:
 - `T-0010 — single relay hop basics`
 - `T-0011 — scheduler baseline and multi-WAN refinement`
 - `T-0012 — control-plane transport hardening`
+- `T-0013 — runtime observability and debugging basics`
 
 The next practical implementation task is:
 
-- `T-0013 — scheduler-to-carrier integration` (wiring `Scheduler.Decide()` results
-  into `DirectCarrier` and `RelayEgressCarrier`), or a transport-security maturation
-  task (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
+- transport-security maturation task (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
 
 ---
 
@@ -430,8 +431,7 @@ Transitloom is currently a **well-specified and now meaningfully implemented** p
 - no substantive issuance code yet
 
 The correct next move is to keep the `agents/` workspace accurate and continue
-the staged implementation order. T-0012 is complete; next is T-0013
-(scheduler-to-carrier integration) or a transport-security maturation task
-(QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
+the staged implementation order. T-0013 is complete; next is transport-security
+maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
 
 ---

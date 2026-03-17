@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/zhouchenh/transitloom/internal/config"
 	"github.com/zhouchenh/transitloom/internal/scheduler"
 	"github.com/zhouchenh/transitloom/internal/service"
+	"github.com/zhouchenh/transitloom/internal/status"
 )
 
 // ScheduledEgressRuntime holds the scheduler and path runtimes for
@@ -20,10 +22,20 @@ import (
 //
 // Direct and relay-assisted runtimes remain architecturally distinct: the
 // scheduler chooses between them but does not blend them into one carrier.
+//
+// The mu/lastActivations fields enable Snapshot() to return the applied carrier
+// state after activation. lastActivations records what the scheduler decided
+// and which carrier was actually started for each association.
 type ScheduledEgressRuntime struct {
 	Scheduler *scheduler.Scheduler
 	Direct    *DirectPathRuntime
 	Relay     *RelayPathRuntime
+
+	// mu protects lastActivations from concurrent reads and writes.
+	mu sync.RWMutex
+	// lastActivations holds the results from the most recent ActivateScheduledEgress
+	// call. It is the primary source for Snapshot() to report applied carrier state.
+	lastActivations []ScheduledEgressActivation
 }
 
 // NewScheduledEgressRuntime creates a ScheduledEgressRuntime with a new
@@ -321,7 +333,82 @@ func ActivateScheduledEgress(
 		}
 	}
 
+	// Store activation results so Snapshot() can report applied carrier state.
+	// This makes it possible to inspect what the scheduler decided and which
+	// carrier was actually started, even after the initial startup log is gone.
+	runtime.mu.Lock()
+	runtime.lastActivations = append([]ScheduledEgressActivation(nil), result.Activations...)
+	runtime.mu.Unlock()
+
 	return result
+}
+
+// Snapshot returns a current point-in-time snapshot of the scheduled egress
+// runtime state, combining the last activation results with live carrier counters.
+//
+// This is the primary way to inspect actual applied carrier behavior after
+// startup. Each entry shows:
+//   - CarrierActivated: what is actually running ("direct", "relay", or "none")
+//   - SchedulerMode: what the scheduler decided (may differ from carrier state)
+//   - SchedulerReason: plain-text explanation of the scheduler's decision
+//   - ActivationError: non-empty if the carrier failed to start
+//   - Live traffic counters for the active carrier
+//
+// The distinction between SchedulerMode and CarrierActivated is intentional:
+// a "per-packet-stripe" decision with a "direct" carrier means the best single
+// path is running because multi-carrier striping is not yet implemented at the
+// carrier level. The snapshot makes this gap observable without hiding it.
+//
+// Snapshot is safe for concurrent use.
+func (r *ScheduledEgressRuntime) Snapshot() status.ScheduledEgressSummary {
+	r.mu.RLock()
+	activations := append([]ScheduledEgressActivation(nil), r.lastActivations...)
+	r.mu.RUnlock()
+
+	entries := make([]status.ScheduledEgressEntry, 0, len(activations))
+	var totalActive, totalFailed, totalNoEligible int
+
+	for _, a := range activations {
+		entry := status.ScheduledEgressEntry{
+			AssociationID:    a.AssociationID,
+			SourceService:    a.SourceService,
+			DestNode:         a.DestNode,
+			DestService:      a.DestService,
+			CarrierActivated: a.CarrierActivated,
+			SchedulerMode:    string(a.Decision.Mode),
+			SchedulerReason:  a.Decision.Reason,
+			ActivationError:  a.ActivationError,
+		}
+
+		// Read live traffic counters from the carrier that is actually running.
+		// Direct and relay counters are kept separate — mixing them would erase
+		// the architectural distinction between direct and relay-assisted carriage.
+		switch a.CarrierActivated {
+		case "direct":
+			entry.IngressPackets, entry.IngressBytes, _ = r.Direct.Carrier.IngressStats(a.AssociationID)
+		case "relay":
+			entry.EgressPackets, entry.EgressBytes, _ = r.Relay.Carrier.EgressStats(a.AssociationID)
+		}
+
+		// Tally outcome counters using the same logic as ActivateScheduledEgress.
+		switch {
+		case a.Decision.Mode == scheduler.ModeNoEligiblePath:
+			totalNoEligible++
+		case a.ActivationError != "":
+			totalFailed++
+		default:
+			totalActive++
+		}
+
+		entries = append(entries, entry)
+	}
+
+	return status.ScheduledEgressSummary{
+		TotalActive:     totalActive,
+		TotalFailed:     totalFailed,
+		TotalNoEligible: totalNoEligible,
+		Entries:         entries,
+	}
 }
 
 // activateSingleScheduledEgress handles one association's scheduler-guided
