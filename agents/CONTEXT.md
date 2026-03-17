@@ -172,12 +172,13 @@ registration path.
 - no live certificate-chain validation during sessions
 - no service discovery implementation
 - no live association lifecycle management or policy evaluation
-- no raw UDP data path
 - no WireGuard-over-mesh working slice
 - no relay behavior
 - no scheduler implementation
+- no multi-WAN aggregation
+- no node main.go integration of direct carriage into the startup flow
 
-In other words: **the shape exists, but the system does not yet exist.**
+The first real data-plane slice now exists (direct raw UDP carriage) but it has not yet been wired into the node startup flow or tested with a real WireGuard deployment.
 
 ---
 
@@ -282,10 +283,11 @@ The completed implementation tasks are:
 - `T-0005 — minimal node-to-coordinator control session`
 - `T-0006 — service registration basics`
 - `T-0007 — association basics`
+- `T-0008 — direct raw UDP carriage basics`
 
 The next practical implementation task is:
 
-- `T-0008 — direct raw UDP carriage`
+- `T-0009 — WireGuard-over-mesh direct-path validation`
 
 That should remain the next implementation slice unless the task system is deliberately reprioritized.
 
@@ -412,7 +414,8 @@ Transitloom is currently a **well-specified and now minimally implemented** proj
 - verified node identity and admission bootstrap validation, readiness reporting, and invalid-local-state rejection
 - verified bootstrap-only node-to-coordinator control-session scaffolding over the coordinator TCP listener, with explicit non-final-auth semantics
 - verified bootstrap-only association creation scaffolding with explicit intent validation, coordinator-side in-memory association store, per-association accept/reject results, and clear separation from service registration and path/forwarding behavior
-- no substantive issuance or data-plane code yet
+- verified direct raw UDP carriage: ForwardingTable with association-bound lookup, DirectCarrier with local ingress listeners and local target delivery, zero in-band overhead, and explicit direct-only scope
+- no substantive issuance code yet
 
 The correct next move is to keep the `agents/` workspace accurate and continue
 the staged implementation order from the new config, trust-bootstrap,

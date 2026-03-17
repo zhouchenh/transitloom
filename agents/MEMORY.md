@@ -137,6 +137,10 @@ These distinctions are important and must not be casually collapsed.
 - Association creation validates that both source and destination services are registered in the coordinator's service registry
 - Self-associations (same node, same service) are rejected
 - Node config carries optional `associations` entries with `source_service`, `destination_node`, `destination_service`; source service type is resolved from local services config; destination service type defaults to raw-udp for v1
+- Direct raw UDP carriage is association-bound: a ForwardingEntry must be installed in the ForwardingTable before carriage can start; the DirectCarrier rejects carriage attempts for unknown associations
+- The ForwardingEntry bridges control-plane association records to data-plane forwarding state; it is not the association itself but the installed forwarding context
+- Local ingress (where app sends into mesh) and local target (where mesh delivers to service) are kept as separate `*net.UDPAddr` fields in the ForwardingEntry and must never be the same address
+- `AssociationConfig` now carries an optional `direct_endpoint` field for bootstrap-only direct-path testing; in the full system, peer endpoints will come from coordinator-distributed path candidates
 
 ---
 

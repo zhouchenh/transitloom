@@ -297,6 +297,11 @@ func validateAssociation(prefix string, assoc AssociationConfig, serviceNames ma
 	if strings.TrimSpace(assoc.DestinationService) == "" {
 		errs.add(prefix+".destination_service", "must be set")
 	}
+	if endpoint := strings.TrimSpace(assoc.DirectEndpoint); endpoint != "" {
+		if _, _, err := net.SplitHostPort(endpoint); err != nil {
+			errs.add(prefix+".direct_endpoint", "must be a valid host:port address")
+		}
+	}
 }
 
 func isSupportedTransport(transport Transport) bool {

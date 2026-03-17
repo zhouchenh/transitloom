@@ -41,9 +41,10 @@ Transitloom does **not** yet have meaningful implementation of:
 - admission-token issuance or refresh
 - coordinator-side admission-token validation
 - service discovery
-- association handling
-- raw UDP carriage
 - WireGuard-over-mesh runtime behavior
+- relay data paths
+- scheduler logic
+- multi-WAN aggregation
 
 ---
 
@@ -51,7 +52,7 @@ Transitloom does **not** yet have meaningful implementation of:
 
 No implementation task is currently marked active.
 
-The next task to start is `T-0008 — direct raw UDP carriage`.
+The next task to start is `T-0009 — WireGuard-over-mesh direct-path validation`.
 
 ---
 
@@ -105,11 +106,24 @@ duplicates, stores narrow placeholder association records, and returns
 structured per-association results. Association is kept strictly distinct from
 service registration, path selection, relay eligibility, and forwarding state.
 
+### T-0008 — direct raw UDP carriage basics
+**status:** completed
+**task file:** `agents/tasks/T-0008-direct-raw-udp-carriage-basics.md`
+
+Implemented the first direct raw UDP carriage path. `internal/dataplane` now
+contains a ForwardingTable for association-bound forwarding lookup, a
+DirectCarrier that manages local ingress listeners (source side) and local
+target delivery (destination side), and a builder that bridges control-plane
+association records to data-plane forwarding entries. Carriage preserves zero
+in-band overhead, stays association-bound, keeps local ingress and local
+target separate, and is explicitly direct-only with no relay, scheduler,
+multi-WAN, or encrypted carriage support.
+
 ---
 
 ## Queued tasks
 
-The next implementation task should be `T-0008 — direct raw UDP carriage`.
+The next implementation task should be `T-0009 — WireGuard-over-mesh direct-path validation`.
 
 ---
 
@@ -144,7 +158,7 @@ The main risk right now is **architecture drift during early implementation**, n
 Right now, prioritize:
 
 1. keeping specs, docs, and agent context consistent
-2. building on the completed config, trust-bootstrap, node bootstrap, bootstrap-only control-session, service-registration, and association scaffolding with direct raw UDP carriage work
+2. building on the completed config, trust-bootstrap, node bootstrap, control-session, service-registration, association, and direct raw UDP carriage foundation with WireGuard-over-mesh direct-path validation
 3. avoiding premature networking/transport complexity
 4. preserving the v1 boundaries already chosen
 5. continuing `agents/` workspace maintenance as implementation progresses

@@ -147,4 +147,14 @@ type AssociationConfig struct {
 	SourceService      string `yaml:"source_service"`
 	DestinationNode    string `yaml:"destination_node"`
 	DestinationService string `yaml:"destination_service"`
+
+	// DirectEndpoint is the peer node's mesh-facing UDP address for direct
+	// raw UDP carriage (e.g., "192.0.2.1:51830"). This is a bootstrap-only
+	// convenience for early direct-path testing. In the full system, peer
+	// endpoint addresses will come from coordinator-distributed path
+	// candidates, not from static node config.
+	//
+	// This field is optional. When empty, the association exists as a
+	// control-plane record but does not enable direct data-plane carriage.
+	DirectEndpoint string `yaml:"direct_endpoint,omitempty"`
 }
