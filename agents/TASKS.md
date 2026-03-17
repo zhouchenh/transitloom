@@ -50,11 +50,38 @@ Transitloom does **not** yet have meaningful implementation of:
 
 ## Active task
 
-No active task.
+None. T-0021 has been completed. See queued tasks below for the next work.
 
 ---
 
 ## Recently completed
+
+### T-0021 — control-plane transport security maturation
+**status:** completed
+**task file:** `agents/tasks/T-0021-control-plane-transport-security-maturation.md`
+
+Implemented minimum useful maturation beyond bootstrap-only HTTP transport.
+Added PKI generation primitives (`GenerateRootCA`, `GenerateCoordinatorIntermediate`,
+`GenerateNodeCertificate`, `ParseCertificatePEM`, `ParseECPrivateKeyPEM`,
+`ParseTLSCertificatePEM`, `NewCertPool`) in `internal/pki/issuance.go`.
+Added TLS 1.3 config builders (`BuildCoordinatorTLSConfig`, `BuildNodeTLSConfig`)
+in `internal/pki/tls.go`.
+Added `SecureControlMode` type, `SecureTransportStatus`, `BootstrapOnlyTransportStatus()`,
+`TLSMTCPFallbackTransportStatus()`, and `ReportLines()` in
+`internal/controlplane/secure_transport.go` — making bootstrap-vs-secure distinction
+explicit at the type level and in operator output.
+Added `SecureControlListener` (TCP + TLS 1.3 mTLS) in
+`internal/coordinator/secure_listener.go`, using the same application-layer handlers
+as `BootstrapListener` but wrapping each listener with TLS. Includes `Run`, `ReportLines`,
+`TransportStatus`, `BoundEndpoints`, `RuntimeSummaryLines`, `RegistrySnapshot`,
+`AssociationSnapshot`.
+Preserved bootstrap-only HTTP transport (`BootstrapListener`) unchanged; both types
+coexist explicitly.
+Added 14 focused tests across `internal/pki` and `internal/coordinator`.
+Fixed TLS 1.3 client rejection test behavior: Go's TLS 1.3 defers the server's
+certificate_required alert to the first client Read; tests updated to account for
+this (check Read error, not DialWithDialer error).
+`go build ./...` and `go test ./...` both pass.
 
 ### T-0020 — quality-aware path selection refinement
 **status:** completed
@@ -330,7 +357,10 @@ multi-WAN, or encrypted carriage support.
 ## Queued tasks
 
 The next implementation tasks are:
-- transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback)
+- runtime integration of distributed path candidates into the scheduler/carrier selection flow
+- node enrollment flow (certificate issuance)
+- application-layer admission-token enforcement on the secure control transport
+- QUIC+TLS 1.3 mTLS primary transport (QUIC wrapper around existing PKI material)
 
 ---
 

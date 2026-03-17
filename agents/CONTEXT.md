@@ -162,14 +162,11 @@ registration path.
 
 ### What is not done yet
 - no real object model implementation in Go
-- no PKI issuance logic
-- no node certificate issuance
 - no node enrollment flow
 - no live admission-token issuance or refresh logic
 - no coordinator-side admission-token validation logic
-- no final QUIC + TLS 1.3 mTLS control transport implementation
-- no final TCP + TLS 1.3 fallback transport implementation
-- no live certificate-chain validation during sessions
+- no final QUIC + TLS 1.3 mTLS control transport implementation (QUIC wrapper around existing TLS material is future work)
+- no live certificate-chain validation during sessions (application-layer admission-token enforcement not yet implemented)
 - no service discovery implementation
 - no live association lifecycle management or policy evaluation
 - live path quality measurement basics (T-0019) implemented: PathQualityStore with EWMA RTT/jitter/loss/confidence, freshness-aware staleness, wired into ScheduledEgressRuntime before Scheduler.Decide(); PathQualitySummary in internal/status for observability; probe-result and direct-update entry points present; active probe scheduling loop not yet wired
@@ -310,10 +307,13 @@ The completed implementation tasks are:
 - `T-0018 — path candidate distribution and consumption basics`
 - `T-0019 — live path quality measurement basics`
 - `T-0020 — quality-aware path selection refinement`
+- `T-0021 — control-plane transport security maturation`
 
-The next practical implementation task is:
+The next practical implementation tasks are:
 
-- transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback)
+- node enrollment flow (certificate issuance)
+- application-layer admission-token enforcement on the secure control transport
+- QUIC+TLS 1.3 mTLS primary transport (QUIC wrapper around existing PKI material)
 
 ---
 
@@ -489,6 +489,17 @@ Quality enrichment is not double-applied: distributed candidates get quality ins
 `RefineCandidates`, config-derived candidates get quality via `ApplyCandidates` separately.
 21 focused tests + 1 benchmark, 5 integration tests. `go build ./...` and `go test ./...` pass.
 
-The correct next move is transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
+T-0021 (control-plane transport security maturation) is now complete. PKI generation
+primitives, TLS 1.3 config builders, explicit `SecureControlMode`/`SecureTransportStatus`
+types, and a `SecureControlListener` (TCP + TLS 1.3 mTLS) are all implemented. The
+bootstrap-only HTTP transport remains unchanged alongside the new secure listener.
+The secure transport boundary is now explicit at the type level, in operator output,
+and in tests. Application-layer admission-token enforcement and QUIC transport remain
+future work, explicitly documented.
+
+The correct next move is to continue the staged implementation order. Remaining priorities:
+- node enrollment flow (certificate issuance)
+- application-layer admission-token enforcement on the secure control transport
+- QUIC+TLS 1.3 mTLS primary transport (QUIC wrapper around existing PKI material)
 
 ---

@@ -126,6 +126,22 @@ These are among the most important v1 boundaries.
 - The coordinator bootstrap listener's HTTP server must have `ReadTimeout`, `WriteTimeout`, `IdleTimeout`, `MaxHeaderBytes`, and per-handler `http.MaxBytesReader` set; omitting these creates attack surface
 - The current bootstrap control transport is HTTP without TLS; the `BootstrapProtocolVersion` and `BootstrapOnly` response fields explicitly declare that this is not the final QUIC+mTLS/TCP+TLS transport; future work must replace the transport without removing the semantic distinction
 - `BootstrapEndpointAttempt.ErrorKind` records the normalized error kind for each failed attempt; report lines must include `kind=` for operator observability
+- `SecureControlMode` in `internal/controlplane/secure_transport.go` is the explicit type for transport security mode; values: `bootstrap-only-http`, `tls-1.3-mtls-tcp-fallback`, `quic-tls-1.3-mtls-primary`; callers must never use raw strings
+- `SecureTransportStatus` (with `Mode`, `Authenticated`, `Description`) must be used in operator-facing log output for any control listener or session; never omit the authentication state
+- `BootstrapOnlyTransportStatus()` returns the explicit declaration for the bootstrap HTTP transport; every bootstrap-session log line should use it so operators cannot mistake the transport as authenticated
+- `TLSMTCPFallbackTransportStatus()` returns the status for active TCP+TLS 1.3 mTLS; `Authenticated=true`
+- `SecureControlListener` (in `internal/coordinator`) is the TCP+TLS 1.3 mTLS fallback control listener; it is a separate type from `BootstrapListener`; both exist explicitly in the codebase; the distinction is at the type level, not in a runtime flag
+- `NewSecureControlListener` rejects a nil `*tls.Config` with a clear error; passing nil would silently create a plaintext listener indistinguishable from `BootstrapListener`
+- `pki.BuildCoordinatorTLSConfig` is the canonical constructor for the coordinator's TLS config; it always enforces `MinVersion: tls.VersionTLS13` and `ClientAuth: tls.RequireAndVerifyClientCert`
+- `pki.BuildNodeTLSConfig` is the canonical constructor for a node's TLS client config; always `MinVersion: tls.VersionTLS13`; `ServerName` must be set (not empty) for hostname-based coordinator deployments
+- PKI generation primitives (`GenerateRootCA`, `GenerateCoordinatorIntermediate`, `GenerateNodeCertificate`) are in `internal/pki/issuance.go`; they produce PEM-encoded material in `RootCAMaterial`, `IntermediateMaterial`, `NodeCertMaterial`
+- Root CA: `MaxPathLen=1` (one level of intermediates allowed), no ExtKeyUsage (root is not a transport cert)
+- Coordinator intermediate: `MaxPathLen=0` / `MaxPathLenZero=true` (prevents sub-intermediates), no ExtKeyUsage restriction (restricting to ServerAuth only would break Go's x509 chain verification for ClientAuth node certs)
+- Node cert: leaf (`IsCA=false`), `ExtKeyUsage: ClientAuth` (required for mTLS node-to-coordinator sessions); a valid node cert is necessary but NOT sufficient for participation — admission token still required
+- Private keys are stored as PKCS#8 PEM (`PRIVATE KEY` header) via `x509.MarshalPKCS8PrivateKey`; SEC1 (`EC PRIVATE KEY`) is also parsed in `ParseECPrivateKeyPEM` for compatibility
+- The bootstrap-only flag (`BootstrapOnly=true`) in session responses must remain true even over TLS 1.3 mTLS; transport authentication is separate from application-layer admission-token enforcement
+- In Go's TLS 1.3 implementation, the server's `certificate_required` rejection alert surfaces on the **first Read** after the client-side handshake completes, not during `tls.DialWithDialer`; tests that expect rejection must do a Read after dial and check for a non-nil read error, not rely on a non-nil dial error
+- Application-layer admission-token enforcement on `SecureControlListener` is NOT yet implemented (T-0021 scope); connections with valid certificates but invalid/missing tokens are not yet rejected at the application layer
 
 ---
 
