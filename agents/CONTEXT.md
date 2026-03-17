@@ -174,7 +174,7 @@ registration path.
 - no live association lifecycle management or policy evaluation
 - live path quality measurement basics (T-0019) implemented: PathQualityStore with EWMA RTT/jitter/loss/confidence, freshness-aware staleness, wired into ScheduledEgressRuntime before Scheduler.Decide(); PathQualitySummary in internal/status for observability; probe-result and direct-update entry points present; active probe scheduling loop not yet wired
 - no multi-path carrier load balancing at the socket level
-- no coordinator-distributed path candidates
+- coordinator-distributed path candidates (distribution/consumption layer implemented in T-0018; runtime selection integration is future work)
 
 The first WireGuard-over-mesh direct-path validation now works end-to-end. Direct raw UDP carriage is wired into the node startup flow via `DirectPathRuntime`. Standard WireGuard can use Transitloom local ingress ports as peer endpoints on a direct path with zero in-band overhead.
 
@@ -307,12 +307,13 @@ The completed implementation tasks are:
 - `T-0015 — external endpoint advertisement and DNAT-aware reachability basics`
 - `T-0016 — tlctl runtime inspection and operator workflows basics`
 - `T-0017 — targeted external endpoint probing and freshness revalidation basics`
+- `T-0018 — path candidate distribution and consumption basics`
 - `T-0019 — live path quality measurement basics`
 
 The next practical implementation task is:
 
-- T-0018 — path candidate distribution and consumption basics (still queued), or
-- transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
+- transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback), or
+- runtime integration of distributed candidates into the scheduler/carrier selection flow.
 
 ---
 
@@ -454,12 +455,29 @@ configured ≠ registered/active/verified, bootstrap-ready ≠ coordinator-autho
 external and local ports kept separate, service registration and association state remain
 distinct sections. 12 focused tests added and passing.
 
-T-0019 is complete: Transitloom now has a live path-quality measurement baseline.
+Path-candidate distribution and consumption basics (T-0018) are now implemented.
+`internal/controlplane/path_candidate.go` adds `DistributedPathCandidate` (explicit
+relay/direct distinction via both `Class` and `IsRelayAssisted` flag), `PathCandidateSet`,
+`PathCandidateRequest`, `PathCandidateResponse`, and HTTP codec helpers
+(`DecodePathCandidateRequest`, `WritePathCandidateResponse`, `Client.RequestPathCandidates`).
+The coordinator bootstrap listener now handles `/v1/bootstrap/path-candidates`; coordinator
+generates relay candidates from configured relay endpoints and notes the absence of direct
+candidates (which require future node endpoint advertisement). Node-side `CandidateStore`
+(copy-isolated, snapshot-sorted, association-indexed) and `StoreCandidates` helper added in
+`internal/node`. `DistributedPathCandidate` is explicitly separate from `scheduler.PathCandidate`,
+`ForwardingEntry`, `RelayForwardingEntry`, and `SchedulerDecision`. 30+ focused tests across
+three packages, all passing. `go build ./...` clean.
+
+T-0019 is also complete: Transitloom now has a live path-quality measurement baseline.
 `PathQualityStore` (internal/scheduler) accepts probe results and direct updates,
 applies EWMA smoothing for RTT/jitter/loss/confidence, enforces freshness (60s default),
 and enriches PathCandidates before scheduling decisions. The quality layer is separate
 from candidate existence and applied runtime behavior. `PathQualitySummary` in
-internal/status provides operator-visible freshness reporting. The next move is
-T-0018 (path candidate distribution) or transport-security maturation.
+internal/status provides operator-visible freshness reporting.
+
+The correct next move is to keep the `agents/` workspace accurate and continue
+the staged implementation order. Both T-0018 and T-0019 are complete; next is
+transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback) or
+runtime integration of distributed candidates into the scheduler/carrier selection flow.
 
 ---

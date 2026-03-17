@@ -212,6 +212,26 @@ These decisions are settled unless deliberately changed through specs.
 
 ---
 
+## Durable distributed path-candidate decisions
+
+These decisions are settled unless deliberately changed through specs.
+
+- `DistributedPathCandidate` (in `internal/controlplane`) is the wire format for coordinator-distributed path candidates; it is explicitly distinct from `scheduler.PathCandidate` (local runtime scheduler input), `ForwardingEntry`, `RelayForwardingEntry`, and `SchedulerDecision`
+- `DistributedPathCandidate` carries both a `Class` field (`direct-public`, `direct-intranet`, `coordinator-relay`, `node-relay`) AND an explicit `IsRelayAssisted bool` flag; both must remain consistent; using both is a deliberate belt-and-suspenders architectural enforcement, not redundancy
+- `PathCandidatePath = "/v1/bootstrap/path-candidates"` is the canonical coordinator endpoint path for path-candidate distribution
+- `PathCandidateSet` is association-bound: every candidate in a set must carry the same `AssociationID` as the set itself; this is enforced by `PathCandidateSet.Validate()`
+- The coordinator currently generates only relay candidates (from `CoordinatorRelayConfig.ListenEndpoints` when `DataEnabled && !DrainMode`); direct candidates require node endpoint advertisement (future work); the absence is always explained via the `Notes` field on `PathCandidateSet`
+- When `DrainMode` is true, the coordinator must not generate relay candidates even if `DataEnabled` is true; the drain state must be noted in `PathCandidateSet.Notes`
+- `CandidateStore` (in `internal/node`) is the node-side store for coordinator-distributed candidates; it holds only `DistributedPathCandidate` values — not scheduler decisions, not forwarding entries, not activation state
+- `CandidateStore` provides copy isolation: `Store()` copies the input slice, `Lookup()` returns a copy; mutating the caller's slice does not affect stored state and vice versa
+- `CandidateStore.Snapshot()` returns all association sets sorted by `AssociationID`; the order must be deterministic
+- `StoreCandidates()` is deliberately separate from carrier activation; it updates only the `CandidateStore` and does not touch scheduler state, forwarding entries, or carriers
+- `FetchPathCandidates()` requires a prior accepted bootstrap session; the fetch/store boundary is explicit: fetch returns the raw response, the caller calls `StoreCandidates()` as a separate step
+- Candidate presence is NOT proof of runtime success; `IsUsable()` means `RemoteEndpoint` is set — it means the coordinator provided an endpoint to try, not that a `ForwardingEntry` is installed or traffic will flow
+- `PathCandidateResponse.BootstrapOnly = true` is always set; the response format explicitly declares non-final semantics matching the bootstrap-only control transport
+
+---
+
 ## Durable live path quality measurement decisions
 
 These decisions are settled unless deliberately changed through specs.

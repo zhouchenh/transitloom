@@ -10,7 +10,7 @@ Path candidate distribution and consumption basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 

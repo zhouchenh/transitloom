@@ -44,19 +44,33 @@ Transitloom does **not** yet have meaningful implementation of:
 - scheduler-to-carrier integration (completed in T-0014; Decide() results now govern direct vs relay carrier activation)
 - live path quality measurement (RTT/jitter/loss from real traffic)
 - multi-path carrier load balancing at the socket level
-- coordinator-distributed path candidates
+- coordinator-distributed path candidates (now implemented at the distribution/consumption layer; runtime selection integration is future work)
 
 ---
 
 ## Active task
 
-No active task. Next task from queue: T-0018 (path candidate distribution
-and consumption basics) or transport-security maturation (QUIC+TLS 1.3 mTLS,
-TCP+TLS 1.3 fallback).
+No active task.
 
 ---
 
 ## Recently completed
+
+### T-0018 — path candidate distribution and consumption basics
+**status:** completed
+**task file:** `agents/tasks/T-0018-path-candidate-distribution-and-consumption-basics.md`
+
+Implemented the first coordinator-mediated path-candidate distribution and
+node-side consumption flow. Added `DistributedPathCandidate` wire model with
+explicit relay/direct distinction in `internal/controlplane/path_candidate.go`.
+Added `/v1/bootstrap/path-candidates` HTTP endpoint to the coordinator bootstrap
+listener via `internal/coordinator/path_candidates.go` + updates to
+`bootstrap_listener.go`. Added node-side `CandidateStore` + `StoreCandidates`
+in `internal/node`. Coordinator generates relay candidates from configured relay
+endpoints; direct candidates require node endpoint advertisement (future work,
+noted via `Notes` field). `DistributedPathCandidate` is explicitly separate from
+`scheduler.PathCandidate`, `ForwardingEntry`, and `SchedulerDecision`. 30+
+focused tests across three packages, all passing. `go build ./...` clean.
 
 ### T-0019 — live path quality measurement basics
 **status:** completed
@@ -301,7 +315,6 @@ multi-WAN, or encrypted carriage support.
 ## Queued tasks
 
 The next implementation tasks are:
-- T-0018 — path candidate distribution and consumption basics (still queued)
 - transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback)
 
 ---

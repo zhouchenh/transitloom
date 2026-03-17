@@ -24,6 +24,7 @@ type BootstrapListener struct {
 	bootstrap       pki.CoordinatorBootstrapState
 	registry        *ServiceRegistry
 	associations    *AssociationStore
+	relayCfg        config.CoordinatorRelayConfig
 	listeners       []net.Listener
 	servers         []*http.Server
 }
@@ -38,13 +39,14 @@ func NewBootstrapListener(cfg config.CoordinatorConfig, bootstrap pki.Coordinato
 
 	registry := NewServiceRegistry()
 	associations := NewAssociationStore(registry)
-	handler := newBootstrapControlHandler(cfg.Identity.Name, bootstrap, registry, associations)
+	handler := newBootstrapControlHandler(cfg.Identity.Name, bootstrap, registry, associations, cfg.Relay)
 
 	listener := &BootstrapListener{
 		coordinatorName: cfg.Identity.Name,
 		bootstrap:       bootstrap,
 		registry:        registry,
 		associations:    associations,
+		relayCfg:        cfg.Relay,
 		listeners:       make([]net.Listener, 0, len(cfg.Control.TCP.ListenEndpoints)),
 		servers:         make([]*http.Server, 0, len(cfg.Control.TCP.ListenEndpoints)),
 	}
@@ -85,16 +87,18 @@ func (l *BootstrapListener) BoundEndpoints() []string {
 }
 
 func (l *BootstrapListener) ReportLines() []string {
-	lines := make([]string, 0, len(l.listeners)+4)
+	lines := make([]string, 0, len(l.listeners)+5)
 	for _, endpoint := range l.BoundEndpoints() {
 		lines = append(lines, fmt.Sprintf("coordinator bootstrap control listener: http://%s%s", endpoint, controlplane.BootstrapSessionPath))
 		lines = append(lines, fmt.Sprintf("coordinator bootstrap service registration listener: http://%s%s", endpoint, controlplane.ServiceRegistrationPath))
 		lines = append(lines, fmt.Sprintf("coordinator bootstrap association listener: http://%s%s", endpoint, controlplane.AssociationPath))
+		lines = append(lines, fmt.Sprintf("coordinator bootstrap path-candidates listener: http://%s%s", endpoint, controlplane.PathCandidatePath))
 	}
 	lines = append(lines,
 		"coordinator bootstrap control note: this endpoint exchanges only bootstrap-readiness snapshots and structured placeholder results",
 		"coordinator bootstrap service note: registered services remain bootstrap-only placeholder state and do not imply discovery or association authorization",
 		"coordinator bootstrap association note: association records are logical connectivity placeholders only; they do not imply path selection, relay eligibility, or forwarding-state installation",
+		"coordinator bootstrap path-candidates note: distributed candidates are coordinator knowledge only; they are not chosen runtime paths or forwarding state",
 		"coordinator bootstrap control note: final QUIC+mTLS/TCP+TLS control sessions and live certificate/admission validation are not implemented yet",
 	)
 	return lines
@@ -139,7 +143,7 @@ func (l *BootstrapListener) Run(ctx context.Context) error {
 	}
 }
 
-func newBootstrapControlHandler(coordinatorName string, bootstrap pki.CoordinatorBootstrapState, registry *ServiceRegistry, associations *AssociationStore) http.Handler {
+func newBootstrapControlHandler(coordinatorName string, bootstrap pki.CoordinatorBootstrapState, registry *ServiceRegistry, associations *AssociationStore, relayCfg config.CoordinatorRelayConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(controlplane.BootstrapSessionPath, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -240,6 +244,36 @@ func newBootstrapControlHandler(coordinatorName string, bootstrap pki.Coordinato
 
 		response, statusCode := evaluateAssociation(coordinatorName, bootstrap, associations, request)
 		if err := controlplane.WriteAssociationResponse(w, statusCode, response); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+	mux.HandleFunc(controlplane.PathCandidatePath, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, controlplane.BootstrapMaxRequestBodyBytes)
+
+		request, err := controlplane.DecodePathCandidateRequest(r.Body)
+		if err != nil {
+			response := pathCandidateErrorResponse(
+				coordinatorName,
+				fmt.Sprintf("invalid bootstrap path-candidate request: %v", err),
+				"bootstrap-only path-candidate endpoint validates request shape plus association existence",
+			)
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			if writeErr := controlplane.WritePathCandidateResponse(w, http.StatusBadRequest, response); writeErr != nil {
+				http.Error(w, writeErr.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+
+		response, statusCode := evaluatePathCandidates(coordinatorName, bootstrap, associations, relayCfg, request)
+		if err := controlplane.WritePathCandidateResponse(w, statusCode, response); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
@@ -524,6 +558,53 @@ func evaluateBootstrapGate(bootstrap pki.CoordinatorBootstrapState, nodeName str
 			statusCode: http.StatusBadRequest,
 		}
 	}
+}
+
+func evaluatePathCandidates(coordinatorName string, bootstrap pki.CoordinatorBootstrapState, associations *AssociationStore, relayCfg config.CoordinatorRelayConfig, request controlplane.PathCandidateRequest) (controlplane.PathCandidateResponse, int) {
+	evaluation := evaluateBootstrapGate(bootstrap, request.NodeName, request.Readiness)
+	if !evaluation.accepted {
+		details := append([]string(nil), evaluation.details...)
+		details = append(details, "bootstrap-only path-candidate distribution requires the same bootstrap prerequisites as the minimal node-to-coordinator control session")
+		return pathCandidateErrorResponse(coordinatorName, details...), evaluation.statusCode
+	}
+
+	candidateSets := GenerateCandidateSets(associations, request.AssociationIDs, relayCfg, coordinatorName)
+
+	totalCandidates := 0
+	for _, s := range candidateSets {
+		totalCandidates += len(s.Candidates)
+	}
+
+	return pathCandidateResponse(
+		coordinatorName,
+		candidateSets,
+		fmt.Sprintf("generated path-candidate sets for %d of %d requested association(s); total candidates: %d",
+			len(candidateSets), len(request.AssociationIDs), totalCandidates),
+		"these are bootstrap-only coordinator-distributed candidates; they are not chosen runtime paths, verified reachability, or installed forwarding state",
+	), http.StatusOK
+}
+
+func pathCandidateResponse(coordinatorName string, sets []controlplane.PathCandidateSet, details ...string) controlplane.PathCandidateResponse {
+	trimmedDetails := make([]string, 0, len(details)+1)
+	for _, d := range details {
+		d = strings.TrimSpace(d)
+		if d == "" {
+			continue
+		}
+		trimmedDetails = append(trimmedDetails, d)
+	}
+	trimmedDetails = append(trimmedDetails, "this is a bootstrap-only path-candidate result; candidates represent coordinator knowledge, not chosen-path state or forwarding-state readiness")
+	return controlplane.PathCandidateResponse{
+		ProtocolVersion: controlplane.BootstrapProtocolVersion,
+		CoordinatorName: coordinatorName,
+		BootstrapOnly:   true,
+		CandidateSets:   sets,
+		Details:         trimmedDetails,
+	}
+}
+
+func pathCandidateErrorResponse(coordinatorName string, details ...string) controlplane.PathCandidateResponse {
+	return pathCandidateResponse(coordinatorName, nil, details...)
 }
 
 func countServiceRegistrationResults(results []controlplane.ServiceRegistrationResult) (accepted, rejected int) {
