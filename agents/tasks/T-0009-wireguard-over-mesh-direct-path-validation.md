@@ -10,7 +10,7 @@ WireGuard-over-mesh direct-path validation
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 

@@ -50,13 +50,24 @@ Transitloom does **not** yet have meaningful implementation of:
 
 ## Active task
 
-No implementation task is currently marked active.
-
-The next task to start is `T-0009 — WireGuard-over-mesh direct-path validation`.
+No implementation task is currently marked active. The next task is T-0010.
 
 ---
 
 ## Recently completed
+
+### T-0009 — WireGuard-over-mesh direct-path validation
+**status:** completed
+**task file:** `agents/tasks/T-0009-wireguard-over-mesh-direct-path-validation.md`
+
+Implemented WireGuard-over-mesh direct-path validation. Wired direct raw UDP
+carriage primitives into node runtime via `DirectPathRuntime`, made Transitloom
+local ingress endpoints usable as WireGuard peer endpoints, validated end-to-end
+direct-path delivery including zero in-band overhead, and preserved all
+service-model/data-plane architecture boundaries. Added `MeshListenPort` to
+association config for per-association inbound delivery. Added 10 focused tests
+including a flagship end-to-end WireGuard-over-mesh validation, bidirectional
+traffic, and multiple-packet delivery.
 
 ### T-0002 — config loading scaffolding
 **status:** completed  
@@ -123,7 +134,7 @@ multi-WAN, or encrypted carriage support.
 
 ## Queued tasks
 
-The next implementation task should be `T-0009 — WireGuard-over-mesh direct-path validation`.
+The next implementation task should be `T-0010 — single relay hop basics`.
 
 ---
 

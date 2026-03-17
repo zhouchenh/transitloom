@@ -157,4 +157,18 @@ type AssociationConfig struct {
 	// This field is optional. When empty, the association exists as a
 	// control-plane record but does not enable direct data-plane carriage.
 	DirectEndpoint string `yaml:"direct_endpoint,omitempty"`
+
+	// MeshListenPort is the local UDP port where this node receives inbound
+	// direct-path traffic for this association. Because Transitloom v1 uses
+	// zero in-band overhead, the association is identified by which mesh
+	// listener port received the packet. Each inbound association needs its
+	// own mesh listen port.
+	//
+	// This is a bootstrap-only convenience for direct-path testing. In the
+	// full system, mesh listen ports will be managed by the runtime based
+	// on coordinator-distributed path candidates.
+	//
+	// Optional. When zero, no inbound delivery listener is started for
+	// this association.
+	MeshListenPort uint16 `yaml:"mesh_listen_port,omitempty"`
 }

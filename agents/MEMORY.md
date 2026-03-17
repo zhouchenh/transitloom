@@ -141,6 +141,9 @@ These distinctions are important and must not be casually collapsed.
 - The ForwardingEntry bridges control-plane association records to data-plane forwarding state; it is not the association itself but the installed forwarding context
 - Local ingress (where app sends into mesh) and local target (where mesh delivers to service) are kept as separate `*net.UDPAddr` fields in the ForwardingEntry and must never be the same address
 - `AssociationConfig` now carries an optional `direct_endpoint` field for bootstrap-only direct-path testing; in the full system, peer endpoints will come from coordinator-distributed path candidates
+- `AssociationConfig` now carries an optional `mesh_listen_port` field for per-association inbound delivery; because zero in-band overhead means no association header, the association is identified by which mesh listener port received the packet
+- `DirectPathRuntime` (in `internal/node`) combines a `ForwardingTable` and `DirectCarrier` into the minimum node-runtime integration needed for direct-path WireGuard-over-mesh
+- Node startup (`cmd/transitloom-node/main.go`) now wires direct-path carriage into the bootstrap flow: after association creation, it builds activation inputs from config + coordinator results, activates direct paths, and stays running if carriage is active
 
 ---
 

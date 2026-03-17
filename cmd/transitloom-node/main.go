@@ -5,9 +5,12 @@ import (
 	"flag"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/zhouchenh/transitloom/internal/config"
+	"github.com/zhouchenh/transitloom/internal/controlplane"
 	"github.com/zhouchenh/transitloom/internal/node"
 )
 
@@ -70,6 +73,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Track accepted association results for direct-path activation.
+	var assocResults []node.AssociationResultEntry
+
 	if len(cfg.Associations) > 0 {
 		associationCtx, associationCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer associationCancel()
@@ -85,7 +91,57 @@ func main() {
 			log.Printf("transitloom-node bootstrap association did not fully succeed with coordinator %q", association.Response.CoordinatorName)
 			os.Exit(1)
 		}
+
+		// Extract accepted association results for direct-path activation.
+		assocResults = extractAssociationResults(association.Response.Results)
 	}
 
-	log.Printf("transitloom-node bootstrap control, service registration, and association reached coordinator %q; authenticated control sessions, path selection, relay eligibility, and forwarding are still not implemented", registration.Response.CoordinatorName)
+	// Activate direct-path carriage for associations with direct_endpoint.
+	// This is the runtime integration that makes WireGuard-over-mesh work
+	// on a direct path. WireGuard remains standard — Transitloom provides
+	// the local ingress endpoints and carries raw UDP packets with zero
+	// in-band overhead.
+	runtime := node.NewDirectPathRuntime()
+	defer runtime.Carrier.StopAll()
+
+	inputs := node.BuildAssociationActivationInputs(cfg, assocResults)
+	if len(inputs) > 0 {
+		runtimeCtx, runtimeCancel := context.WithCancel(context.Background())
+		defer runtimeCancel()
+
+		directResult := node.ActivateDirectPaths(runtimeCtx, cfg, runtime, inputs)
+		for _, line := range directResult.ReportLines() {
+			log.Print(line)
+		}
+
+		if directResult.TotalActive > 0 {
+			log.Printf("transitloom-node direct-path carriage active: %d association(s); WireGuard can use Transitloom local ingress ports as peer endpoints", directResult.TotalActive)
+
+			// Stay running until signaled so carriage continues.
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+			<-sigCh
+			log.Printf("transitloom-node shutting down")
+			runtimeCancel()
+			return
+		}
+	}
+
+	log.Printf("transitloom-node bootstrap control, service registration, and association reached coordinator %q; direct-path carriage requires associations with direct_endpoint configured", registration.Response.CoordinatorName)
+}
+
+// extractAssociationResults converts controlplane association results to the
+// node-level AssociationResultEntry format needed for direct-path activation.
+func extractAssociationResults(results []controlplane.AssociationResult) []node.AssociationResultEntry {
+	entries := make([]node.AssociationResultEntry, 0, len(results))
+	for _, r := range results {
+		entries = append(entries, node.AssociationResultEntry{
+			AssociationID:      r.AssociationID,
+			SourceServiceName:  r.SourceServiceName,
+			DestinationNode:    r.DestinationNode,
+			DestinationService: r.DestinationService,
+			Accepted:           r.Outcome == controlplane.AssociationResultOutcomeCreated,
+		})
+	}
+	return entries
 }

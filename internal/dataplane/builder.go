@@ -98,6 +98,9 @@ func ReportDirectCarriageStatus() DirectCarriageStatus {
 			"association-bound forwarding: carriage requires valid installed association context",
 			"forwarding table with install, lookup, and remove operations",
 			"per-association packet and byte counters",
+			"WireGuard-over-mesh direct-path validation: standard WireGuard can use Transitloom local ingress ports",
+			"node runtime wiring: config -> association -> forwarding entry -> carrier startup",
+			"local ingress / local target / service binding / association distinction preserved",
 		},
 		NotImplemented: []string{
 			"relay forwarding (coordinator relay or node relay)",

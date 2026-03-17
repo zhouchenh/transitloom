@@ -172,13 +172,11 @@ registration path.
 - no live certificate-chain validation during sessions
 - no service discovery implementation
 - no live association lifecycle management or policy evaluation
-- no WireGuard-over-mesh working slice
 - no relay behavior
 - no scheduler implementation
 - no multi-WAN aggregation
-- no node main.go integration of direct carriage into the startup flow
 
-The first real data-plane slice now exists (direct raw UDP carriage) but it has not yet been wired into the node startup flow or tested with a real WireGuard deployment.
+The first WireGuard-over-mesh direct-path validation now works end-to-end. Direct raw UDP carriage is wired into the node startup flow via `DirectPathRuntime`. Standard WireGuard can use Transitloom local ingress ports as peer endpoints on a direct path with zero in-band overhead. Relay, scheduler, and multi-WAN support are still not implemented.
 
 ---
 
@@ -284,10 +282,11 @@ The completed implementation tasks are:
 - `T-0006 — service registration basics`
 - `T-0007 — association basics`
 - `T-0008 — direct raw UDP carriage basics`
+- `T-0009 — WireGuard-over-mesh direct-path validation`
 
 The next practical implementation task is:
 
-- `T-0009 — WireGuard-over-mesh direct-path validation`
+- `T-0010 — single relay hop basics`
 
 That should remain the next implementation slice unless the task system is deliberately reprioritized.
 
@@ -401,7 +400,7 @@ This file should be updated when:
 
 ## Current summary
 
-Transitloom is currently a **well-specified and now minimally implemented** project with:
+Transitloom is currently a **well-specified and now meaningfully implemented** project with:
 
 - strong v1 specs
 - a clear flagship use case
@@ -415,12 +414,11 @@ Transitloom is currently a **well-specified and now minimally implemented** proj
 - verified bootstrap-only node-to-coordinator control-session scaffolding over the coordinator TCP listener, with explicit non-final-auth semantics
 - verified bootstrap-only association creation scaffolding with explicit intent validation, coordinator-side in-memory association store, per-association accept/reject results, and clear separation from service registration and path/forwarding behavior
 - verified direct raw UDP carriage: ForwardingTable with association-bound lookup, DirectCarrier with local ingress listeners and local target delivery, zero in-band overhead, and explicit direct-only scope
+- verified WireGuard-over-mesh direct-path validation: `DirectPathRuntime` wires carriage into node startup, end-to-end delivery works with zero in-band overhead, local ingress and local target remain distinct, standard WireGuard can use Transitloom local ingress ports as peer endpoints
 - no substantive issuance code yet
 
 The correct next move is to keep the `agents/` workspace accurate and continue
-the staged implementation order from the new config, trust-bootstrap,
-node-bootstrap, and bootstrap-session foundation, moving next into service
-registration basics or a deliberately split issuance/auth prerequisite if that
-proves safer.
+the staged implementation order, moving next into single relay hop basics
+(T-0010) or a deliberately split prerequisite if that proves safer.
 
 ---
