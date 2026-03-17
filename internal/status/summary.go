@@ -1,6 +1,8 @@
 package status
 
 import (
+	"time"
+
 	"github.com/zhouchenh/transitloom/internal/service"
 )
 
@@ -159,6 +161,42 @@ type ScheduledEgressEntry struct {
 	// Non-zero only when CarrierActivated == "relay" and traffic has flowed.
 	EgressPackets uint64
 	EgressBytes   uint64
+
+	// Candidates provides detailed diagnostics for all path candidates
+	// considered by the scheduler for this association.
+	//
+	// This is the primary explainability surface for "why this path / why not
+	// that path" questions. It includes excluded, degraded, and unmeasured
+	// candidates with explicit reasons and freshness state.
+	Candidates []PathCandidateStatus
+}
+
+// PathCandidateStatus provides operator-facing diagnostics for a single
+// path candidate.
+//
+// It preserves architectural distinctions among candidate existence,
+// endpoint freshness, measured quality, and scheduler eligibility.
+type PathCandidateStatus struct {
+	ID    string
+	Class string
+
+	// Usable is true when the candidate was eligible for scheduling.
+	// False means it was excluded (e.g. endpoint failed, missing endpoint).
+	Usable        bool
+	ExcludeReason string
+
+	// Health is the health state passed to the scheduler.
+	Health         string
+	DegradedReason string
+
+	// EndpointState reflects address-level reachability (usable/stale/failed/unknown).
+	EndpointState string
+
+	// Quality describes the measured RTT/jitter/loss/confidence.
+	RTT          time.Duration
+	Jitter       time.Duration
+	LossFraction float64
+	Confidence   float64
 }
 
 // MakeBootstrapSummary constructs a BootstrapSummary from node bootstrap state.

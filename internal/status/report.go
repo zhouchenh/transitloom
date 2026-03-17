@@ -92,6 +92,26 @@ func (s ScheduledEgressSummary) ReportLines() []string {
 				e.EgressPackets, e.EgressBytes,
 			))
 		}
+
+		// Candidate diagnostics: detailed "why" for each considered path.
+		for _, c := range e.Candidates {
+			statusLabel := "usable"
+			if !c.Usable {
+				statusLabel = fmt.Sprintf("EXCLUDED: %s", c.ExcludeReason)
+			} else if c.DegradedReason != "" {
+				statusLabel = fmt.Sprintf("degraded: %s", c.DegradedReason)
+			}
+
+			qualityLabel := "unmeasured"
+			if c.Confidence > 0 {
+				qualityLabel = fmt.Sprintf("rtt=%v loss=%.2f%% conf=%.2f", c.RTT, c.LossFraction*100, c.Confidence)
+			}
+
+			lines = append(lines, fmt.Sprintf(
+				"    candidate %s: %s | class=%s health=%s endpoint=%s quality=%s",
+				c.ID, statusLabel, c.Class, c.Health, c.EndpointState, qualityLabel,
+			))
+		}
 	}
 
 	return lines

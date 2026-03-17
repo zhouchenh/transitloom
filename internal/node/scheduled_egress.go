@@ -149,6 +149,10 @@ type ScheduledEgressActivation struct {
 
 	// ActivationError records any carrier startup error. Empty on success.
 	ActivationError string
+
+	// Candidates records the diagnostics for all candidates considered
+	// for this association's decision.
+	Candidates []status.PathCandidateStatus
 }
 
 // ScheduledEgressResult summarizes all scheduler-guided egress activation outcomes.
@@ -416,6 +420,7 @@ func (r *ScheduledEgressRuntime) Snapshot() status.ScheduledEgressSummary {
 			SchedulerMode:    string(a.Decision.Mode),
 			SchedulerReason:  a.Decision.Reason,
 			ActivationError:  a.ActivationError,
+			Candidates:       a.Candidates,
 		}
 
 		// Read live traffic counters from the carrier that is actually running.
@@ -504,6 +509,7 @@ func activateSingleScheduledEgress(
 	//   - Quality enriches RTT/jitter/loss/confidence for fine-grained scoring.
 	// Neither source replaces the other; both are visible in RefinedCandidate fields.
 	candidates := input.PathCandidates
+	var refined []RefinedCandidate
 
 	if runtime.CandidateStore != nil {
 		distributed := runtime.CandidateStore.Lookup(input.AssociationID)
@@ -517,7 +523,7 @@ func activateSingleScheduledEgress(
 			// ApplyCandidates call below), so we must NOT call ApplyCandidates again
 			// on the distributed candidates — that would incorrectly zero out the
 			// already-enriched quality for candidates without a quality-store entry.
-			refined := RefineCandidates(distributed, runtime.EndpointRegistry, runtime.QualityStore)
+			refined = RefineCandidates(distributed, runtime.EndpointRegistry, runtime.QualityStore)
 			distributedCandidates := UsableSchedulerCandidates(refined)
 
 			// Merge distributed candidates into the candidate list.
@@ -548,6 +554,10 @@ func activateSingleScheduledEgress(
 	// must not call Decide() for end-to-end path selection.
 	decision := runtime.Scheduler.Decide(input.AssociationID, candidates)
 	activation.Decision = decision
+
+	// Record diagnostics for all candidates considered.
+	// This preserves the "why" for both included and excluded candidates.
+	activation.Candidates = buildCandidateStatus(input.PathCandidates, refined)
 
 	// No eligible path: skip carrier activation. The reason is in Decision.Reason.
 	if decision.Mode == scheduler.ModeNoEligiblePath {
@@ -589,6 +599,46 @@ func activateSingleScheduledEgress(
 	}
 
 	return activation
+}
+
+// buildCandidateStatus converts both config-derived and distributed candidates
+// into unified diagnostic status for operator reporting.
+func buildCandidateStatus(configCandidates []scheduler.PathCandidate, refined []RefinedCandidate) []status.PathCandidateStatus {
+	res := make([]status.PathCandidateStatus, 0, len(configCandidates)+len(refined))
+
+	// Config-derived candidates (from static config).
+	for _, c := range configCandidates {
+		res = append(res, status.PathCandidateStatus{
+			ID:            c.ID,
+			Class:         string(c.Class),
+			Usable:        true,
+			Health:        string(c.Health),
+			EndpointState: string(CandidateEndpointUnknown),
+			RTT:           c.Quality.RTT,
+			Jitter:        c.Quality.Jitter,
+			LossFraction:  c.Quality.LossFraction,
+			Confidence:    c.Quality.Confidence,
+		})
+	}
+
+	// Coordinator-distributed candidates (refined).
+	for _, rc := range refined {
+		res = append(res, status.PathCandidateStatus{
+			ID:             rc.DistributedID,
+			Class:          string(rc.Candidate.Class),
+			Usable:         rc.Usable,
+			ExcludeReason:  rc.ExcludeReason,
+			Health:         string(rc.Candidate.Health),
+			DegradedReason: rc.DegradedReason,
+			EndpointState:  string(rc.EndpointState),
+			RTT:            rc.Candidate.Quality.RTT,
+			Jitter:         rc.Candidate.Quality.Jitter,
+			LossFraction:   rc.Candidate.Quality.LossFraction,
+			Confidence:     rc.Candidate.Quality.Confidence,
+		})
+	}
+
+	return res
 }
 
 // activateDirectFromScheduledInput bridges a ScheduledActivationInput to the

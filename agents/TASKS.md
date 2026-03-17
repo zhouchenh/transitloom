@@ -50,11 +50,25 @@ Transitloom does **not** yet have meaningful implementation of:
 
 ## Active task
 
-None. T-0021 has been completed. See queued tasks below for the next work.
-
----
+None. T-0025 has been completed. See queued tasks below for the next work.
 
 ## Recently completed
+
+### T-0025 — operator path diagnostics and explainability basics
+**status:** completed
+**task file:** `agents/tasks/T-0025-operator-path-diagnostics-and-explainability-basics.md`
+
+Implemented the first explicit operator-facing path diagnostics and
+explainability baseline. Enhanced `internal/status` types to carry
+`PathCandidateStatus` for all considered candidates, including
+exclusion reasons, health degradation, endpoint freshness, and measured
+quality. Updated `ScheduledEgressRuntime.Snapshot()` to include these
+diagnostics for each association. Enhanced the scheduler to provide
+detailed "why" reasons for burst vs stripe mode decisions, including
+explicit mismatch reasons. Updated `tlctl node status` output to
+surface these detailed "why chosen / why not chosen" diagnostics.
+Added focused tests for the explainability logic. `go build ./...`
+and `go test ./...` pass.
 
 ### T-0021 — control-plane transport security maturation
 **status:** completed

@@ -166,7 +166,8 @@ func (s *Scheduler) Decide(associationID string, candidates []PathCandidate) Sch
 func (s *Scheduler) decideMultiple(associationID string, eligible []PathCandidate) SchedulerDecision {
 	scored := scoreCandidates(eligible)
 
-	if s.pathsCloselyMatched(scored) {
+	matched, mismatchReason := s.pathsCloselyMatched(scored)
+	if matched {
 		paths := buildChosenPaths(scored)
 		return SchedulerDecision{
 			AssociationID:   associationID,
@@ -189,7 +190,7 @@ func (s *Scheduler) decideMultiple(associationID string, eligible []PathCandidat
 			Class:       best.Class,
 			Weight:      100,
 		}},
-		Reason: buildBurstReason(scored),
+		Reason: buildBurstReason(scored, mismatchReason),
 	}
 }
 
@@ -199,17 +200,20 @@ func (s *Scheduler) decideMultiple(associationID string, eligible []PathCandidat
 // If any candidate is unmeasured or has insufficient confidence, striping is
 // blocked. This is the conservative gate required by spec/v1-data-plane.md
 // section 15.2: "Closely matched" requires actual measurements, not assumptions.
-func (s *Scheduler) pathsCloselyMatched(scored []scoredCandidate) bool {
+func (s *Scheduler) pathsCloselyMatched(scored []scoredCandidate) (bool, string) {
 	if len(scored) < 2 {
-		return false
+		return false, "fewer than 2 candidates"
 	}
 
 	// All candidates must have sufficient measurement confidence.
 	// Per-packet striping on unmeasured paths is unsafe: we cannot verify
 	// that the paths are actually similar without measurement data.
 	for _, c := range scored {
-		if !c.Quality.Measured() || c.Quality.Confidence < s.thresholds.MinConfidence {
-			return false
+		if !c.Quality.Measured() {
+			return false, fmt.Sprintf("candidate %s is unmeasured", c.ID)
+		}
+		if c.Quality.Confidence < s.thresholds.MinConfidence {
+			return false, fmt.Sprintf("candidate %s confidence %.2f below threshold %.2f", c.ID, c.Quality.Confidence, s.thresholds.MinConfidence)
 		}
 	}
 
@@ -243,9 +247,17 @@ func (s *Scheduler) pathsCloselyMatched(scored []scoredCandidate) bool {
 	jitterSpread := maxJitter - minJitter
 	lossSpread := maxLoss - minLoss
 
-	return rttSpread <= s.thresholds.MaxRTTSpread &&
-		jitterSpread <= s.thresholds.MaxJitterSpread &&
-		lossSpread <= s.thresholds.MaxLossSpread
+	if rttSpread > s.thresholds.MaxRTTSpread {
+		return false, fmt.Sprintf("rtt spread %v exceeds threshold %v", rttSpread, s.thresholds.MaxRTTSpread)
+	}
+	if jitterSpread > s.thresholds.MaxJitterSpread {
+		return false, fmt.Sprintf("jitter spread %v exceeds threshold %v", jitterSpread, s.thresholds.MaxJitterSpread)
+	}
+	if lossSpread > s.thresholds.MaxLossSpread {
+		return false, fmt.Sprintf("loss spread %.2f%% exceeds threshold %.2f%%", lossSpread*100, s.thresholds.MaxLossSpread*100)
+	}
+
+	return true, ""
 }
 
 // CountersSnapshot returns a sorted copy of all per-association decision counters.
@@ -446,14 +458,14 @@ func buildNoEligibleReason(associationID string, all []PathCandidate) string {
 }
 
 // buildBurstReason explains why weighted burst/flowlet mode was chosen.
-func buildBurstReason(scored []scoredCandidate) string {
+func buildBurstReason(scored []scoredCandidate, mismatchReason string) string {
 	best := scored[0]
 	msg := fmt.Sprintf("mode=weighted-burst-flowlet; best path: id=%s class=%s score=%d",
 		best.ID, best.Class, best.score)
 	if len(scored) > 1 {
 		runner := scored[1]
-		msg += fmt.Sprintf("; runner-up: id=%s class=%s score=%d; paths not closely matched for per-packet striping",
-			runner.ID, runner.Class, runner.score)
+		msg += fmt.Sprintf("; runner-up: id=%s class=%s score=%d; striping-blocked: %s",
+			runner.ID, runner.Class, runner.score, mismatchReason)
 	}
 	return msg
 }

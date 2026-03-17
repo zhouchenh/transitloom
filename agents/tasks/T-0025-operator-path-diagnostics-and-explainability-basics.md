@@ -10,7 +10,7 @@ Operator path diagnostics and explainability basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 
