@@ -10,7 +10,7 @@ Scheduler-to-carrier integration
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 

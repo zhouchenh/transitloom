@@ -87,12 +87,12 @@ func ReportSchedulerStatus() SchedulerCarriageStatus {
 			"observable counters: per-association decision/mode/striping counts (AssociationCounters)",
 			"decision reasoning: every SchedulerDecision.Reason is non-empty and human-readable",
 			"SchedulerStatus snapshot: thresholds and counters readable at any time",
+			"scheduler-to-carrier integration: Decide() results wired into ScheduledEgressRuntime; governs DirectCarrier vs RelayEgressCarrier activation per association",
 		},
 		NotImplemented: []string{
 			"live path quality measurement (RTT/jitter/loss inputs from real traffic or probes)",
 			"active probing integration (lightweight liveness/latency probe triggers)",
 			"hysteresis for path switching (preventing oscillation on noisy quality measurements)",
-			"scheduler-to-carrier integration (Decide() results not yet wired into DirectCarrier or RelayEgressCarrier)",
 			"multi-path carrier load balancing (per-packet delivery split not yet implemented at carrier level)",
 			"node relay scheduling (only coordinator relay defined in PathClass; node relay not yet active)",
 			"metered path bandwidth limiting or reduced-weight treatment",

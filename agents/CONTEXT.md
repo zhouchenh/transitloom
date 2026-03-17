@@ -172,8 +172,7 @@ registration path.
 - no live certificate-chain validation during sessions
 - no service discovery implementation
 - no live association lifecycle management or policy evaluation
-- no scheduler-to-carrier integration (Scheduler.Decide() results not yet wired into DirectCarrier or RelayEgressCarrier)
-- no live path quality measurement (RTT/jitter/loss from real traffic or probes)
+- no live path quality measurement (RTT/jitter/loss from real traffic or probes) — scheduler uses static zero-quality candidates from config
 - no multi-path carrier load balancing at the socket level
 - no coordinator-distributed path candidates
 
@@ -181,7 +180,9 @@ The first WireGuard-over-mesh direct-path validation now works end-to-end. Direc
 
 Single relay hop basics (T-0010) are implemented. `RelayCarrier` (coordinator relay), `RelayEgressCarrier` (source node egress), and associated forwarding tables exist in `internal/dataplane`. `CoordinatorRelayRuntime` and `RelayPathRuntime` exist for integration. The single-hop constraint is structurally enforced; destination delivery reuses the existing `DirectCarrier.StartDelivery` path.
 
-Scheduler baseline and multi-WAN refinement (T-0011) are now implemented. `internal/scheduler` now contains the first endpoint-owned scheduler: `PathCandidate`, `RelayCandidate`, `PathQuality`, `PathClass`, `HealthState`, `SchedulerDecision`, `Mode`, `ChosenPath`, `Scheduler`, `StripeMatchThresholds`, `AssociationCounters`, `SchedulerStatus`. The scheduler filters candidates by association ID + health, scores by AdminWeight + relay penalty + quality, defaults to `ModeWeightedBurstFlowlet`, and activates `ModePerPacketStripe` only when all paths are within configured thresholds. 25 tests and 2 benchmarks pass. Scheduler-to-carrier integration (wiring Decide() results into DirectCarrier/RelayEgressCarrier) is not yet done.
+Scheduler baseline and multi-WAN refinement (T-0011) are now implemented. `internal/scheduler` now contains the first endpoint-owned scheduler: `PathCandidate`, `RelayCandidate`, `PathQuality`, `PathClass`, `HealthState`, `SchedulerDecision`, `Mode`, `ChosenPath`, `Scheduler`, `StripeMatchThresholds`, `AssociationCounters`, `SchedulerStatus`. The scheduler filters candidates by association ID + health, scores by AdminWeight + relay penalty + quality, defaults to `ModeWeightedBurstFlowlet`, and activates `ModePerPacketStripe` only when all paths are within configured thresholds. 25 tests and 2 benchmarks pass.
+
+Scheduler-to-carrier integration (T-0014) is now implemented. `ScheduledEgressRuntime` combines `Scheduler` + `DirectPathRuntime` + `RelayPathRuntime`. `ActivateScheduledEgress` calls `Scheduler.Decide()` at the egress decision point for each association, then activates the chosen carrier: `DirectCarrier` for direct-class paths, `RelayEgressCarrier` for relay-class paths. Direct paths are preferred over relay via relay penalty. Striping is not activated for unmeasured candidates (confidence=0). `ScheduledEgressActivation.CarrierActivated` and `Decision` fields are always aligned for operator observability. `cmd/transitloom-node/main.go` now uses `BuildScheduledActivationInputs` + `ActivateScheduledEgress`. `relay_endpoint` format validation added to `validateAssociation`. 17 focused tests pass.
 
 Control-plane transport hardening (T-0012) is now implemented. `internal/controlplane/transport.go` defines named constants for all bootstrap transport timeouts, retry limits, and body size limits. `internal/controlplane/errors.go` defines `TransportErrorKind`, `TransportError`, and `ClassifyTransportError()`. The coordinator bootstrap listener now has full HTTP server timeouts (`ReadTimeout`, `WriteTimeout`, `IdleTimeout`, `MaxHeaderBytes`) and `http.MaxBytesReader` body limiting on all handler paths. Node bootstrap session now performs bounded exponential backoff retry for timeout errors only (up to `BootstrapRetryMaxAttempts`), skips immediately for connection-refused, and aborts immediately for context cancellation. `BootstrapEndpointAttempt` now carries `ErrorKind` for structured observability. 12 focused tests added and passing.
 

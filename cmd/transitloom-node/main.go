@@ -96,26 +96,28 @@ func main() {
 		assocResults = extractAssociationResults(association.Response.Results)
 	}
 
-	// Activate direct-path carriage for associations with direct_endpoint.
-	// This is the runtime integration that makes WireGuard-over-mesh work
-	// on a direct path. WireGuard remains standard — Transitloom provides
-	// the local ingress endpoints and carries raw UDP packets with zero
-	// in-band overhead.
-	runtime := node.NewDirectPathRuntime()
-	defer runtime.Carrier.StopAll()
+	// Activate scheduler-guided egress carriage for associations with direct or
+	// relay endpoints. Scheduler.Decide() governs which carrier (direct or relay)
+	// is activated per association. Direct paths are preferred over relay-assisted
+	// paths when both are available (relay penalty ensures this). WireGuard
+	// remains standard — Transitloom carries raw UDP packets with zero in-band
+	// overhead regardless of whether the path is direct or relay-assisted.
+	scheduledRuntime := node.NewScheduledEgressRuntime()
+	defer scheduledRuntime.Direct.Carrier.StopAll()
+	defer scheduledRuntime.Relay.Carrier.StopAll()
 
-	inputs := node.BuildAssociationActivationInputs(cfg, assocResults)
-	if len(inputs) > 0 {
+	scheduledInputs := node.BuildScheduledActivationInputs(cfg, assocResults)
+	if len(scheduledInputs) > 0 {
 		runtimeCtx, runtimeCancel := context.WithCancel(context.Background())
 		defer runtimeCancel()
 
-		directResult := node.ActivateDirectPaths(runtimeCtx, cfg, runtime, inputs)
-		for _, line := range directResult.ReportLines() {
+		scheduledResult := node.ActivateScheduledEgress(runtimeCtx, cfg, scheduledRuntime, scheduledInputs)
+		for _, line := range scheduledResult.ReportLines() {
 			log.Print(line)
 		}
 
-		if directResult.TotalActive > 0 {
-			log.Printf("transitloom-node direct-path carriage active: %d association(s); WireGuard can use Transitloom local ingress ports as peer endpoints", directResult.TotalActive)
+		if scheduledResult.TotalActive > 0 {
+			log.Printf("transitloom-node scheduler-guided carriage active: %d association(s); scheduler chose path per association (direct preferred over relay)", scheduledResult.TotalActive)
 
 			// Stay running until signaled so carriage continues.
 			sigCh := make(chan os.Signal, 1)
@@ -127,7 +129,7 @@ func main() {
 		}
 	}
 
-	log.Printf("transitloom-node bootstrap control, service registration, and association reached coordinator %q; direct-path carriage requires associations with direct_endpoint configured", registration.Response.CoordinatorName)
+	log.Printf("transitloom-node bootstrap control, service registration, and association reached coordinator %q; scheduler-guided carriage requires associations with direct_endpoint or relay_endpoint configured", registration.Response.CoordinatorName)
 }
 
 // extractAssociationResults converts controlplane association results to the

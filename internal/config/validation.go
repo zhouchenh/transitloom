@@ -302,6 +302,11 @@ func validateAssociation(prefix string, assoc AssociationConfig, serviceNames ma
 			errs.add(prefix+".direct_endpoint", "must be a valid host:port address")
 		}
 	}
+	if endpoint := strings.TrimSpace(assoc.RelayEndpoint); endpoint != "" {
+		if _, _, err := net.SplitHostPort(endpoint); err != nil {
+			errs.add(prefix+".relay_endpoint", "must be a valid host:port address")
+		}
+	}
 }
 
 func isSupportedTransport(transport Transport) bool {

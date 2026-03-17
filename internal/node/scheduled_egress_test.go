@@ -1,0 +1,718 @@
+package node
+
+import (
+	"context"
+	"testing"
+
+	"github.com/zhouchenh/transitloom/internal/config"
+	"github.com/zhouchenh/transitloom/internal/scheduler"
+	"github.com/zhouchenh/transitloom/internal/service"
+)
+
+// --- Unit tests: buildPathCandidatesFromEndpoints ---
+
+func TestBuildPathCandidatesFromEndpoints_DirectOnly(t *testing.T) {
+	candidates := buildPathCandidatesFromEndpoints("assoc-1", "192.0.2.1:51830", "")
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(candidates))
+	}
+	c := candidates[0]
+	if c.Class != scheduler.PathClassDirectPublic {
+		t.Fatalf("expected PathClassDirectPublic, got %s", c.Class)
+	}
+	if c.Health != scheduler.HealthStateActive {
+		t.Fatalf("expected HealthStateActive, got %s", c.Health)
+	}
+	if c.AssociationID != "assoc-1" {
+		t.Fatalf("expected assoc-1, got %s", c.AssociationID)
+	}
+	if c.ID != "assoc-1:direct" {
+		t.Fatalf("expected assoc-1:direct, got %s", c.ID)
+	}
+	if c.Quality.Measured() {
+		t.Fatal("quality must be unmeasured for static config candidates")
+	}
+}
+
+func TestBuildPathCandidatesFromEndpoints_RelayOnly(t *testing.T) {
+	candidates := buildPathCandidatesFromEndpoints("assoc-2", "", "10.0.0.1:40001")
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(candidates))
+	}
+	c := candidates[0]
+	if c.Class != scheduler.PathClassCoordinatorRelay {
+		t.Fatalf("expected PathClassCoordinatorRelay, got %s", c.Class)
+	}
+	if c.Health != scheduler.HealthStateActive {
+		t.Fatalf("expected HealthStateActive, got %s", c.Health)
+	}
+	if c.ID != "assoc-2:relay" {
+		t.Fatalf("expected assoc-2:relay, got %s", c.ID)
+	}
+}
+
+func TestBuildPathCandidatesFromEndpoints_Both(t *testing.T) {
+	candidates := buildPathCandidatesFromEndpoints("assoc-3", "192.0.2.1:51830", "10.0.0.1:40001")
+	if len(candidates) != 2 {
+		t.Fatalf("expected 2 candidates, got %d", len(candidates))
+	}
+	// Direct comes first.
+	if candidates[0].Class != scheduler.PathClassDirectPublic {
+		t.Fatalf("expected direct candidate first, got %s", candidates[0].Class)
+	}
+	if candidates[1].Class != scheduler.PathClassCoordinatorRelay {
+		t.Fatalf("expected relay candidate second, got %s", candidates[1].Class)
+	}
+}
+
+func TestBuildPathCandidatesFromEndpoints_Neither(t *testing.T) {
+	candidates := buildPathCandidatesFromEndpoints("assoc-4", "", "")
+	if len(candidates) != 0 {
+		t.Fatalf("expected 0 candidates, got %d", len(candidates))
+	}
+}
+
+// --- Unit tests: scheduler integration via ScheduledEgressRuntime ---
+
+// TestSchedulerPrefersDirectOverRelay verifies that when both a direct and a
+// relay path candidate are offered, the scheduler chooses the direct path.
+// This is required by the spec: relay paths incur a scoring penalty so that
+// direct paths are preferred when they are healthy and competitively useful.
+func TestSchedulerPrefersDirectOverRelay(t *testing.T) {
+	runtime := NewScheduledEgressRuntime()
+	associationID := "node-a/wg0:raw-udp->node-b/wg0:raw-udp"
+
+	candidates := []scheduler.PathCandidate{
+		{
+			ID:            associationID + ":direct",
+			AssociationID: associationID,
+			Class:         scheduler.PathClassDirectPublic,
+			Health:        scheduler.HealthStateActive,
+			AdminWeight:   100,
+		},
+		{
+			ID:            associationID + ":relay",
+			AssociationID: associationID,
+			Class:         scheduler.PathClassCoordinatorRelay,
+			Health:        scheduler.HealthStateActive,
+			AdminWeight:   100,
+		},
+	}
+
+	decision := runtime.Scheduler.Decide(associationID, candidates)
+
+	if decision.Mode == scheduler.ModeNoEligiblePath {
+		t.Fatalf("expected eligible path, got ModeNoEligiblePath; reason: %s", decision.Reason)
+	}
+	if len(decision.ChosenPaths) == 0 {
+		t.Fatal("expected at least one chosen path")
+	}
+
+	best := decision.ChosenPaths[0]
+	if best.Class.IsRelay() {
+		t.Fatalf("scheduler should prefer direct over relay, but chose %s; reason: %s",
+			best.Class, decision.Reason)
+	}
+}
+
+// TestSchedulerNoEligiblePathWhenAllFailed verifies that failed-health candidates
+// produce ModeNoEligiblePath.
+func TestSchedulerNoEligiblePathWhenAllFailed(t *testing.T) {
+	runtime := NewScheduledEgressRuntime()
+	associationID := "node-a/wg0:raw-udp->node-b/wg0:raw-udp"
+
+	candidates := []scheduler.PathCandidate{
+		{
+			ID:            associationID + ":direct",
+			AssociationID: associationID,
+			Class:         scheduler.PathClassDirectPublic,
+			Health:        scheduler.HealthStateFailed,
+			AdminWeight:   100,
+		},
+		{
+			ID:            associationID + ":relay",
+			AssociationID: associationID,
+			Class:         scheduler.PathClassCoordinatorRelay,
+			Health:        scheduler.HealthStateFailed,
+			AdminWeight:   100,
+		},
+	}
+
+	decision := runtime.Scheduler.Decide(associationID, candidates)
+
+	if decision.Mode != scheduler.ModeNoEligiblePath {
+		t.Fatalf("expected ModeNoEligiblePath for all-failed candidates, got %s", decision.Mode)
+	}
+	if decision.Reason == "" {
+		t.Fatal("Reason must be non-empty even for ModeNoEligiblePath")
+	}
+}
+
+// TestSchedulerStripingNotActivatedForUnmeasuredPaths verifies that
+// ModePerPacketStripe is not selected when all paths have unmeasured quality
+// (confidence=0). The striping gate must block striping for unmeasured paths.
+func TestSchedulerStripingNotActivatedForUnmeasuredPaths(t *testing.T) {
+	runtime := NewScheduledEgressRuntime()
+	associationID := "node-a/wg0:raw-udp->node-b/wg0:raw-udp"
+
+	// Two candidates with zero-value Quality (unmeasured).
+	candidates := []scheduler.PathCandidate{
+		{
+			ID:            associationID + ":direct1",
+			AssociationID: associationID,
+			Class:         scheduler.PathClassDirectPublic,
+			Health:        scheduler.HealthStateActive,
+			AdminWeight:   100,
+			// Quality is zero-value: unmeasured.
+		},
+		{
+			ID:            associationID + ":direct2",
+			AssociationID: associationID,
+			Class:         scheduler.PathClassDirectIntranet,
+			Health:        scheduler.HealthStateActive,
+			AdminWeight:   100,
+			// Quality is zero-value: unmeasured.
+		},
+	}
+
+	decision := runtime.Scheduler.Decide(associationID, candidates)
+
+	if decision.Mode == scheduler.ModePerPacketStripe {
+		t.Fatalf("striping must not activate for unmeasured paths (confidence=0); got ModePerPacketStripe; reason: %s",
+			decision.Reason)
+	}
+	if decision.Reason == "" {
+		t.Fatal("Reason must be non-empty")
+	}
+}
+
+// TestSchedulerDecisionReasonAlwaysNonEmpty verifies that every scheduler
+// decision carries a non-empty Reason, regardless of outcome. This is required
+// by the spec: Reason is always set for observability.
+func TestSchedulerDecisionReasonAlwaysNonEmpty(t *testing.T) {
+	runtime := NewScheduledEgressRuntime()
+	associationID := "assoc-reason-test"
+
+	cases := []struct {
+		name       string
+		candidates []scheduler.PathCandidate
+	}{
+		{
+			name:       "no candidates",
+			candidates: nil,
+		},
+		{
+			name: "single active direct",
+			candidates: []scheduler.PathCandidate{
+				{
+					ID:            associationID + ":direct",
+					AssociationID: associationID,
+					Class:         scheduler.PathClassDirectPublic,
+					Health:        scheduler.HealthStateActive,
+					AdminWeight:   100,
+				},
+			},
+		},
+		{
+			name: "all failed",
+			candidates: []scheduler.PathCandidate{
+				{
+					ID:            associationID + ":direct",
+					AssociationID: associationID,
+					Class:         scheduler.PathClassDirectPublic,
+					Health:        scheduler.HealthStateFailed,
+					AdminWeight:   100,
+				},
+			},
+		},
+		{
+			name: "direct and relay",
+			candidates: []scheduler.PathCandidate{
+				{
+					ID:            associationID + ":direct",
+					AssociationID: associationID,
+					Class:         scheduler.PathClassDirectPublic,
+					Health:        scheduler.HealthStateActive,
+					AdminWeight:   100,
+				},
+				{
+					ID:            associationID + ":relay",
+					AssociationID: associationID,
+					Class:         scheduler.PathClassCoordinatorRelay,
+					Health:        scheduler.HealthStateActive,
+					AdminWeight:   100,
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			decision := runtime.Scheduler.Decide(associationID, tc.candidates)
+			if decision.Reason == "" {
+				t.Fatalf("Reason must be non-empty for case %q (mode=%s)", tc.name, decision.Mode)
+			}
+		})
+	}
+}
+
+// --- Integration tests: ActivateScheduledEgress with real sockets ---
+
+// makeDirectScheduledCfg constructs a NodeConfig for scheduled egress tests
+// using a direct path. The wgPort is the local service (WireGuard) listen port.
+// The ingressPort is the local ingress port for the scheduled carrier.
+func makeDirectScheduledCfg(wgPort, ingressPort uint16) config.NodeConfig {
+	return config.NodeConfig{
+		Identity: config.IdentityMetadata{Name: "node-a"},
+		Services: []config.ServiceConfig{
+			{
+				Name: "wg0",
+				Type: config.ServiceTypeRawUDP,
+				Binding: config.ServiceBindingConfig{
+					Address: "127.0.0.1",
+					Port:    wgPort,
+				},
+				Ingress: &config.ServiceIngressConfig{
+					Mode:       config.IngressModeStatic,
+					StaticPort: ingressPort,
+				},
+			},
+		},
+	}
+}
+
+// TestActivateScheduledEgress_DirectChosen verifies that when the scheduler
+// chooses a direct path, the direct carrier is activated and CarrierActivated="direct".
+func TestActivateScheduledEgress_DirectChosen(t *testing.T) {
+	// Allocate real sockets.
+	wgConn, wgAddr := allocLoopbackUDP(t)
+	defer wgConn.Close()
+
+	meshPreConn, meshPreAddr := allocLoopbackUDP(t)
+	meshPreConn.Close()
+
+	ingressPreConn, ingressPreAddr := allocLoopbackUDP(t)
+	ingressPreConn.Close()
+
+	cfg := makeDirectScheduledCfg(uint16(wgAddr.Port), uint16(ingressPreAddr.Port))
+
+	rt := NewScheduledEgressRuntime()
+	defer rt.Direct.Carrier.StopAll()
+	defer rt.Relay.Carrier.StopAll()
+
+	associationID := "node-a/wg0:raw-udp->node-b/wg0:raw-udp"
+
+	// Direct-only candidate: scheduler must choose direct.
+	inputs := []ScheduledActivationInput{
+		{
+			AssociationID:  associationID,
+			SourceNode:     "node-a",
+			SourceService:  service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DestNode:       "node-b",
+			DestService:    service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DirectEndpoint: meshPreAddr.String(),
+			MeshListenPort: uint16(meshPreAddr.Port),
+			PathCandidates: buildPathCandidatesFromEndpoints(associationID, meshPreAddr.String(), ""),
+		},
+	}
+
+	ctx := context.Background()
+	result := ActivateScheduledEgress(ctx, cfg, rt, inputs)
+
+	if result.TotalActive != 1 {
+		t.Fatalf("expected 1 active, got active=%d failed=%d no-eligible=%d",
+			result.TotalActive, result.TotalFailed, result.TotalNoEligible)
+	}
+
+	act := result.Activations[0]
+	if act.CarrierActivated != "direct" {
+		t.Fatalf("expected carrier=direct, got %q (reason: %s)", act.CarrierActivated, act.Decision.Reason)
+	}
+	if act.ActivationError != "" {
+		t.Fatalf("unexpected activation error: %s", act.ActivationError)
+	}
+	if act.Decision.Reason == "" {
+		t.Fatal("decision Reason must be non-empty")
+	}
+}
+
+// TestActivateScheduledEgress_NoEligiblePath verifies that an input with only
+// failed-health candidates results in TotalNoEligible=1 and CarrierActivated="none".
+func TestActivateScheduledEgress_NoEligiblePath(t *testing.T) {
+	wgConn, wgAddr := allocLoopbackUDP(t)
+	defer wgConn.Close()
+
+	ingressPreConn, ingressPreAddr := allocLoopbackUDP(t)
+	ingressPreConn.Close()
+
+	cfg := makeDirectScheduledCfg(uint16(wgAddr.Port), uint16(ingressPreAddr.Port))
+
+	rt := NewScheduledEgressRuntime()
+	defer rt.Direct.Carrier.StopAll()
+	defer rt.Relay.Carrier.StopAll()
+
+	associationID := "node-a/wg0:raw-udp->node-b/wg0:raw-udp"
+
+	// All candidates are failed — scheduler must return ModeNoEligiblePath.
+	inputs := []ScheduledActivationInput{
+		{
+			AssociationID: associationID,
+			SourceNode:    "node-a",
+			SourceService: service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DestNode:      "node-b",
+			DestService:   service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			PathCandidates: []scheduler.PathCandidate{
+				{
+					ID:            associationID + ":direct",
+					AssociationID: associationID,
+					Class:         scheduler.PathClassDirectPublic,
+					Health:        scheduler.HealthStateFailed,
+					AdminWeight:   100,
+				},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	result := ActivateScheduledEgress(ctx, cfg, rt, inputs)
+
+	if result.TotalNoEligible != 1 {
+		t.Fatalf("expected TotalNoEligible=1, got active=%d failed=%d no-eligible=%d",
+			result.TotalActive, result.TotalFailed, result.TotalNoEligible)
+	}
+
+	act := result.Activations[0]
+	if act.CarrierActivated != "none" {
+		t.Fatalf("expected carrier=none for ModeNoEligiblePath, got %q", act.CarrierActivated)
+	}
+	if act.Decision.Mode != scheduler.ModeNoEligiblePath {
+		t.Fatalf("expected ModeNoEligiblePath, got %s", act.Decision.Mode)
+	}
+	if act.Decision.Reason == "" {
+		t.Fatal("decision Reason must be non-empty even for ModeNoEligiblePath")
+	}
+}
+
+// TestActivateScheduledEgress_RelayOnlyPath verifies that when only a relay
+// endpoint is configured, the scheduler picks the relay path and the relay
+// egress carrier is activated (CarrierActivated="relay").
+func TestActivateScheduledEgress_RelayOnlyPath(t *testing.T) {
+	// Set up a relay endpoint (loopback coordinator relay simulation).
+	relayConn, relayAddr := allocLoopbackUDP(t)
+	defer relayConn.Close()
+
+	// WireGuard local target (service binding port).
+	wgConn, wgAddr := allocLoopbackUDP(t)
+	defer wgConn.Close()
+
+	// Local ingress port for the relay egress carrier.
+	ingressPreConn, ingressPreAddr := allocLoopbackUDP(t)
+	ingressPreConn.Close()
+
+	cfg := makeDirectScheduledCfg(uint16(wgAddr.Port), uint16(ingressPreAddr.Port))
+
+	rt := NewScheduledEgressRuntime()
+	defer rt.Direct.Carrier.StopAll()
+	defer rt.Relay.Carrier.StopAll()
+
+	associationID := "node-a/wg0:raw-udp->node-b/wg0:raw-udp"
+
+	// Relay-only candidate: scheduler must choose relay.
+	inputs := []ScheduledActivationInput{
+		{
+			AssociationID: associationID,
+			SourceNode:    "node-a",
+			SourceService: service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DestNode:      "node-b",
+			DestService:   service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			RelayEndpoint: relayAddr.String(),
+			PathCandidates: buildPathCandidatesFromEndpoints(associationID, "", relayAddr.String()),
+		},
+	}
+
+	ctx := context.Background()
+	result := ActivateScheduledEgress(ctx, cfg, rt, inputs)
+
+	if result.TotalActive != 1 {
+		t.Fatalf("expected 1 active relay activation, got active=%d failed=%d no-eligible=%d",
+			result.TotalActive, result.TotalFailed, result.TotalNoEligible)
+	}
+
+	act := result.Activations[0]
+	if act.CarrierActivated != "relay" {
+		t.Fatalf("expected carrier=relay, got %q (reason: %s)", act.CarrierActivated, act.Decision.Reason)
+	}
+	if act.ActivationError != "" {
+		t.Fatalf("unexpected activation error: %s", act.ActivationError)
+	}
+}
+
+// TestActivateScheduledEgress_StripingNotActivated verifies that when the
+// scheduler is given two unmeasured paths, the mode is not ModePerPacketStripe,
+// and activation proceeds with the best single path ("direct" here).
+func TestActivateScheduledEgress_StripingNotActivated(t *testing.T) {
+	wgConn, wgAddr := allocLoopbackUDP(t)
+	defer wgConn.Close()
+
+	meshPreConn, meshPreAddr := allocLoopbackUDP(t)
+	meshPreConn.Close()
+
+	ingressPreConn, ingressPreAddr := allocLoopbackUDP(t)
+	ingressPreConn.Close()
+
+	cfg := makeDirectScheduledCfg(uint16(wgAddr.Port), uint16(ingressPreAddr.Port))
+
+	rt := NewScheduledEgressRuntime()
+	defer rt.Direct.Carrier.StopAll()
+	defer rt.Relay.Carrier.StopAll()
+
+	associationID := "node-a/wg0:raw-udp->node-b/wg0:raw-udp"
+
+	// Two candidates: direct + relay, both unmeasured.
+	inputs := []ScheduledActivationInput{
+		{
+			AssociationID:  associationID,
+			SourceNode:     "node-a",
+			SourceService:  service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DestNode:       "node-b",
+			DestService:    service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DirectEndpoint: meshPreAddr.String(),
+			MeshListenPort: uint16(meshPreAddr.Port),
+			PathCandidates: buildPathCandidatesFromEndpoints(associationID, meshPreAddr.String(), "10.0.0.1:40001"),
+		},
+	}
+
+	ctx := context.Background()
+	result := ActivateScheduledEgress(ctx, cfg, rt, inputs)
+
+	if len(result.Activations) != 1 {
+		t.Fatalf("expected 1 activation, got %d", len(result.Activations))
+	}
+
+	act := result.Activations[0]
+	if act.Decision.Mode == scheduler.ModePerPacketStripe {
+		t.Fatalf("per-packet striping must not activate for unmeasured paths; reason: %s", act.Decision.Reason)
+	}
+	// Scheduler should not have returned no-eligible when a direct active path exists.
+	if act.Decision.Mode == scheduler.ModeNoEligiblePath {
+		t.Fatalf("unexpected ModeNoEligiblePath; reason: %s", act.Decision.Reason)
+	}
+}
+
+// TestActivateScheduledEgress_DecisionAlignedWithActivation verifies that the
+// Decision.Mode and CarrierActivated fields are consistent:
+//   - ModeNoEligiblePath → CarrierActivated="none"
+//   - other mode + direct best path → CarrierActivated="direct"
+//   - other mode + relay best path → CarrierActivated="relay"
+func TestActivateScheduledEgress_DecisionAlignedWithActivation(t *testing.T) {
+	wgConn, wgAddr := allocLoopbackUDP(t)
+	defer wgConn.Close()
+
+	meshPreConn, meshPreAddr := allocLoopbackUDP(t)
+	meshPreConn.Close()
+
+	ingressPreConn, ingressPreAddr := allocLoopbackUDP(t)
+	ingressPreConn.Close()
+
+	cfg := makeDirectScheduledCfg(uint16(wgAddr.Port), uint16(ingressPreAddr.Port))
+
+	rt := NewScheduledEgressRuntime()
+	defer rt.Direct.Carrier.StopAll()
+	defer rt.Relay.Carrier.StopAll()
+
+	associationID := "node-a/wg0:raw-udp->node-b/wg0:raw-udp"
+
+	inputs := []ScheduledActivationInput{
+		{
+			AssociationID:  associationID,
+			SourceNode:     "node-a",
+			SourceService:  service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DestNode:       "node-b",
+			DestService:    service.Identity{Name: "wg0", Type: config.ServiceTypeRawUDP},
+			DirectEndpoint: meshPreAddr.String(),
+			MeshListenPort: uint16(meshPreAddr.Port),
+			PathCandidates: buildPathCandidatesFromEndpoints(associationID, meshPreAddr.String(), ""),
+		},
+	}
+
+	ctx := context.Background()
+	result := ActivateScheduledEgress(ctx, cfg, rt, inputs)
+
+	if len(result.Activations) != 1 {
+		t.Fatalf("expected 1 activation, got %d", len(result.Activations))
+	}
+
+	act := result.Activations[0]
+
+	// Verify alignment rule.
+	switch {
+	case act.Decision.Mode == scheduler.ModeNoEligiblePath:
+		if act.CarrierActivated != "none" {
+			t.Fatalf("alignment violation: ModeNoEligiblePath but CarrierActivated=%q", act.CarrierActivated)
+		}
+	case act.CarrierActivated == "direct":
+		// Verify the decision's chosen path is not a relay.
+		if len(act.Decision.ChosenPaths) > 0 && act.Decision.ChosenPaths[0].Class.IsRelay() {
+			t.Fatalf("alignment violation: CarrierActivated=direct but ChosenPaths[0].Class=%s",
+				act.Decision.ChosenPaths[0].Class)
+		}
+	case act.CarrierActivated == "relay":
+		// Verify the decision's chosen path is a relay.
+		if len(act.Decision.ChosenPaths) > 0 && !act.Decision.ChosenPaths[0].Class.IsRelay() {
+			t.Fatalf("alignment violation: CarrierActivated=relay but ChosenPaths[0].Class=%s",
+				act.Decision.ChosenPaths[0].Class)
+		}
+	default:
+		if act.ActivationError == "" {
+			t.Fatalf("unexpected CarrierActivated=%q with no error and non-no-eligible mode=%s",
+				act.CarrierActivated, act.Decision.Mode)
+		}
+	}
+
+	// Report lines must be non-empty.
+	lines := result.ReportLines()
+	if len(lines) == 0 {
+		t.Fatal("expected non-empty report lines")
+	}
+}
+
+// TestBuildScheduledActivationInputs_FiltersControlPlaneOnly verifies that
+// associations with neither direct nor relay endpoints are excluded (they are
+// control-plane records only, no data-plane path configured).
+func TestBuildScheduledActivationInputs_FiltersControlPlaneOnly(t *testing.T) {
+	cfg := config.NodeConfig{
+		Identity: config.IdentityMetadata{Name: "node-a"},
+		Services: []config.ServiceConfig{
+			{
+				Name: "wg0",
+				Type: config.ServiceTypeRawUDP,
+				Binding: config.ServiceBindingConfig{
+					Address: "127.0.0.1",
+					Port:    51820,
+				},
+			},
+		},
+		Associations: []config.AssociationConfig{
+			{
+				SourceService:      "wg0",
+				DestinationNode:    "node-b",
+				DestinationService: "wg0",
+				DirectEndpoint:     "192.0.2.1:51830",
+				MeshListenPort:     51830,
+			},
+			{
+				SourceService:      "wg0",
+				DestinationNode:    "node-c",
+				DestinationService: "wg0",
+				// No endpoints — control-plane record only; must be skipped.
+			},
+		},
+	}
+
+	results := []AssociationResultEntry{
+		{
+			AssociationID:      "node-a/wg0:raw-udp->node-b/wg0:raw-udp",
+			SourceServiceName:  "wg0",
+			DestinationNode:    "node-b",
+			DestinationService: "wg0",
+			Accepted:           true,
+		},
+		{
+			AssociationID:      "node-a/wg0:raw-udp->node-c/wg0:raw-udp",
+			SourceServiceName:  "wg0",
+			DestinationNode:    "node-c",
+			DestinationService: "wg0",
+			Accepted:           true,
+		},
+	}
+
+	inputs := BuildScheduledActivationInputs(cfg, results)
+
+	if len(inputs) != 1 {
+		t.Fatalf("expected 1 input (only the one with a direct_endpoint), got %d", len(inputs))
+	}
+	if inputs[0].AssociationID != "node-a/wg0:raw-udp->node-b/wg0:raw-udp" {
+		t.Fatalf("wrong association ID: %s", inputs[0].AssociationID)
+	}
+	if inputs[0].DirectEndpoint != "192.0.2.1:51830" {
+		t.Fatalf("wrong direct endpoint: %s", inputs[0].DirectEndpoint)
+	}
+	// PathCandidates must be populated.
+	if len(inputs[0].PathCandidates) == 0 {
+		t.Fatal("PathCandidates must be non-empty for inputs with a direct endpoint")
+	}
+}
+
+// TestBuildScheduledActivationInputs_BothEndpoints verifies that when both
+// direct and relay endpoints are configured, both PathCandidates are present
+// so the scheduler can choose between them.
+func TestBuildScheduledActivationInputs_BothEndpoints(t *testing.T) {
+	cfg := config.NodeConfig{
+		Identity: config.IdentityMetadata{Name: "node-a"},
+		Services: []config.ServiceConfig{
+			{
+				Name: "wg0",
+				Type: config.ServiceTypeRawUDP,
+				Binding: config.ServiceBindingConfig{
+					Address: "127.0.0.1",
+					Port:    51820,
+				},
+			},
+		},
+		Associations: []config.AssociationConfig{
+			{
+				SourceService:      "wg0",
+				DestinationNode:    "node-b",
+				DestinationService: "wg0",
+				DirectEndpoint:     "192.0.2.1:51830",
+				MeshListenPort:     51830,
+				RelayEndpoint:      "10.0.0.1:40001",
+			},
+		},
+	}
+
+	results := []AssociationResultEntry{
+		{
+			AssociationID:      "node-a/wg0:raw-udp->node-b/wg0:raw-udp",
+			SourceServiceName:  "wg0",
+			DestinationNode:    "node-b",
+			DestinationService: "wg0",
+			Accepted:           true,
+		},
+	}
+
+	inputs := BuildScheduledActivationInputs(cfg, results)
+
+	if len(inputs) != 1 {
+		t.Fatalf("expected 1 input, got %d", len(inputs))
+	}
+
+	inp := inputs[0]
+	if inp.DirectEndpoint != "192.0.2.1:51830" {
+		t.Fatalf("wrong direct endpoint: %s", inp.DirectEndpoint)
+	}
+	if inp.RelayEndpoint != "10.0.0.1:40001" {
+		t.Fatalf("wrong relay endpoint: %s", inp.RelayEndpoint)
+	}
+
+	// Must have two candidates: one direct, one relay.
+	if len(inp.PathCandidates) != 2 {
+		t.Fatalf("expected 2 PathCandidates (direct+relay), got %d", len(inp.PathCandidates))
+	}
+	hasDirectCandidate := false
+	hasRelayCandidate := false
+	for _, c := range inp.PathCandidates {
+		if c.Class == scheduler.PathClassDirectPublic {
+			hasDirectCandidate = true
+		}
+		if c.Class == scheduler.PathClassCoordinatorRelay {
+			hasRelayCandidate = true
+		}
+	}
+	if !hasDirectCandidate {
+		t.Fatal("expected a direct PathCandidate")
+	}
+	if !hasRelayCandidate {
+		t.Fatal("expected a relay PathCandidate")
+	}
+}

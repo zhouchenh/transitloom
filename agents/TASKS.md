@@ -41,7 +41,7 @@ Transitloom does **not** yet have meaningful implementation of:
 - admission-token issuance or refresh
 - coordinator-side admission-token validation
 - service discovery
-- scheduler-to-carrier integration (Decide() results not yet wired into carriers)
+- scheduler-to-carrier integration (completed in T-0014; Decide() results now govern direct vs relay carrier activation)
 - live path quality measurement (RTT/jitter/loss from real traffic)
 - multi-path carrier load balancing at the socket level
 - coordinator-distributed path candidates
@@ -50,15 +50,27 @@ Transitloom does **not** yet have meaningful implementation of:
 
 ## Active task
 
-No task is currently active.
-
-The next task to pick up is **T-0013 — scheduler-to-carrier integration** (wiring
-`Scheduler.Decide()` results into `DirectCarrier` and `RelayEgressCarrier`) or a
-transport-security maturation task (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
+No active task. Next task from queue: transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
 
 ---
 
 ## Recently completed
+
+### T-0014 — scheduler-to-carrier integration
+**status:** completed
+**task file:** `agents/tasks/T-0014-scheduler-to-carrier-integration.md`
+
+Implemented `ScheduledEgressRuntime` + `ActivateScheduledEgress` in `internal/node`.
+`Scheduler.Decide()` is called at the egress decision point for each association;
+result governs whether `DirectCarrier` or `RelayEgressCarrier` is activated.
+Direct paths preferred over relay via relay penalty; striping blocked for unmeasured
+paths (confidence=0). `ScheduledEgressActivation.CarrierActivated` + `Decision`
+fields are always aligned for operator observability. `cmd/transitloom-node/main.go`
+now uses `BuildScheduledActivationInputs` + `ActivateScheduledEgress` instead of
+`BuildAssociationActivationInputs` + `ActivateDirectPaths`. Added `relay_endpoint`
+format validation to config. Updated `ReportSchedulerStatus()` to show integration
+as implemented. Added 17 focused tests.
+`go build ./...` and `go test ./...` both pass.
 
 ### T-0012 — control-plane transport hardening
 **status:** completed
