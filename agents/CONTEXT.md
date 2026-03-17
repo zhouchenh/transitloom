@@ -171,7 +171,7 @@ registration path.
 - no live association lifecycle management or policy evaluation
 - live path quality measurement basics (T-0019) implemented: PathQualityStore with EWMA RTT/jitter/loss/confidence, freshness-aware staleness, wired into ScheduledEgressRuntime before Scheduler.Decide(); PathQualitySummary in internal/status for observability; probe-result and direct-update entry points present; active probe scheduling loop not yet wired
 - no multi-path carrier load balancing at the socket level
-- coordinator-distributed path candidates (distribution/consumption T-0018 done; refinement layer T-0020 done — `RefineCandidates` applies endpoint freshness + quality enrichment before scheduling; active probe scheduling loop not yet wired)
+- coordinator-distributed path candidates (distribution/consumption T-0018 done; refinement layer T-0020 done; candidate refresh/revalidation automation T-0022 done — `CandidateFreshnessStore` + `SelectCandidateRefreshTargets` + `ExecuteCandidateRefresh` provide bounded coordinator re-fetch when candidates go stale; active probe scheduling loop not yet wired)
 
 The first WireGuard-over-mesh direct-path validation now works end-to-end. Direct raw UDP carriage is wired into the node startup flow via `DirectPathRuntime`. Standard WireGuard can use Transitloom local ingress ports as peer endpoints on a direct path with zero in-band overhead.
 
@@ -310,6 +310,7 @@ The completed implementation tasks are:
 - `T-0019 — live path quality measurement basics`
 - `T-0020 — quality-aware path selection refinement`
 - `T-0021 — control-plane transport security maturation`
+- `T-0022 — candidate refresh and revalidation automation basics`
 
 The next practical implementation tasks are:
 
@@ -498,6 +499,20 @@ bootstrap-only HTTP transport remains unchanged alongside the new secure listene
 The secure transport boundary is now explicit at the type level, in operator output,
 and in tests. Application-layer admission-token enforcement and QUIC transport remain
 future work, explicitly documented.
+
+T-0022 (candidate refresh and revalidation automation basics) is now complete.
+`CandidateFreshnessStore` in `internal/node/candidate_refresh.go` tracks per-association
+coordinator-fetch freshness with explicit `CandidateRefreshTrigger` values and lazy
+age-based staleness check (no background goroutines). `SelectCandidateRefreshTargets()`
+scans three freshness layers in priority order (freshness store stale → endpoint stale/failed
+→ quality stale), deduplicates by association ID, and preserves root-cause trigger.
+`ExecuteCandidateRefresh()` is bounded: fetches updated candidates from the coordinator for
+targets in the given list only, calls `StoreCandidates()`, marks refreshed — never calls
+`Scheduler.Decide()` or activates carriers. `CandidateRefreshResult` with `ReportLines()`
+provides operator-visible per-association refresh outcomes. Three freshness layers remain
+explicitly distinct: `EndpointRegistry` (address reachability), `PathQualityStore`
+(RTT/jitter/loss freshness), `CandidateFreshnessStore` (coordinator-distribution freshness).
+26 focused tests added and passing.
 
 The correct next move is to continue the staged implementation order. Remaining priorities:
 - node enrollment flow (certificate issuance)

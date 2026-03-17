@@ -50,9 +50,30 @@ Transitloom does **not** yet have meaningful implementation of:
 
 ## Active task
 
-None. T-0025 has been completed. See queued tasks below for the next work.
+None.
 
 ## Recently completed
+
+### T-0022 — candidate refresh and revalidation automation basics
+**status:** completed
+**task file:** `agents/tasks/T-0022-candidate-refresh-and-revalidation-automation-basics.md`
+
+Implemented the first bounded automation layer for refreshing distributed path
+candidates and revalidating their supporting endpoint/reachability assumptions.
+Added `CandidateFreshnessStore` (per-association staleness tracking with explicit
+`CandidateRefreshTrigger` values: endpoint-stale, endpoint-failed, quality-stale,
+candidate-expired, path-unhealthy, explicit), `SelectCandidateRefreshTargets()`
+(scans three freshness layers in priority order, deduplicates by association ID,
+preserves root-cause trigger), `ExecuteCandidateRefresh()` (bounded refresh:
+fetches updated candidates from coordinator for targets in the given list only,
+calls `StoreCandidates()`, marks refreshed — does NOT call `Scheduler.Decide()`
+or activate carriers), `CandidateRefreshResult` with `ReportLines()` for
+observability. Three freshness layers remain explicitly distinct throughout:
+`EndpointRegistry` (address-level reachability), `PathQualityStore` (RTT/jitter/loss
+measurement freshness), `CandidateFreshnessStore` (coordinator-distribution freshness).
+26 focused tests covering store lifecycle, trigger priority, deduplication, quality-stale
+vs absent-quality distinction, architectural boundary enforcement. `go build ./...` and
+`go test ./...` both pass.
 
 ### T-0025 — operator path diagnostics and explainability basics
 **status:** completed

@@ -284,6 +284,25 @@ These decisions are settled unless deliberately changed through specs.
 
 ---
 
+## Durable candidate refresh and revalidation decisions
+
+These decisions are settled unless deliberately changed through specs.
+
+- `CandidateFreshnessStore` in `internal/node` is the per-association store for coordinator-distribution freshness; it is explicitly distinct from `EndpointRegistry` (address-level reachability) and `PathQualityStore` (RTT/jitter/loss measurement freshness); the three freshness layers must never be collapsed
+- `CandidateRefreshTrigger` has six values: `endpoint-stale`, `endpoint-failed`, `quality-stale`, `candidate-expired`, `path-unhealthy`, `explicit`; every refresh target must carry the trigger that caused it
+- `DefaultCandidateMaxAge` = 5 minutes; candidates older than this without an explicit refresh are treated as stale by `FreshnessState()`
+- `CandidateFreshnessState` has three values: `fresh` (recently refreshed), `stale` (explicitly marked or age-expired), `unknown` (never tracked or never refreshed); stale state must not silently look current
+- `MarkStale()` preserves the first trigger that fires (root-cause visibility); subsequent `MarkStale()` calls do not overwrite `StaleReason` once a stale record exists
+- `FreshnessState()` performs lazy age-based staleness check (`time.Since(r.LastRefreshedAt) > s.maxAge`); no background goroutines are needed; the check is performed on every read
+- `SelectCandidateRefreshTargets()` scans three freshness layers in priority order: (1) freshness store stale/expired, (2) endpoint registry stale/failed endpoints matching known candidates, (3) quality store stale measurements for candidate IDs; a `seen` map deduplicates by association ID so the first (highest-priority) trigger wins
+- Quality-stale trigger fires only when `len(staleQualityIDs) > 0` AND a candidate ID is in that set; absent quality (never measured) does NOT trigger a quality-stale refresh; this distinction prevents spurious re-fetches for paths that simply have no measurements yet
+- `ExecuteCandidateRefresh()` is bounded: it only processes targets in the provided list, never scans the whole network, and skips all targets if the bootstrap session is not accepted; skipped targets record an explicit skip reason in `CandidateRefreshDetail`
+- `ExecuteCandidateRefresh()` calls `FetchPathCandidates()` + `StoreCandidates()` per target; it never calls `Scheduler.Decide()` or activates carriers; refresh updates `CandidateStore` only — the scheduler decision point is deliberately separate
+- `CandidateRefreshResult` carries `Attempted`, `Refreshed`, `Failed`, `Skipped` counts plus per-association `Details`; `ReportLines()` surfaces this for operator review
+- Active probe scheduling loop (driving the registry and quality store with real probe results) is NOT yet implemented; `SelectCandidateRefreshTargets()` and `ExecuteCandidateRefresh()` exist and are correct but callers must drive the refresh lifecycle externally
+
+---
+
 ## Durable WireGuard-over-mesh decisions
 
 - WireGuard is the flagship documented v1 use case

@@ -10,7 +10,7 @@ Candidate refresh and revalidation automation basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 
