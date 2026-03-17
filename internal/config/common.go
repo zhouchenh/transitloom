@@ -137,6 +137,72 @@ type NodeRelayConfig struct {
 	MaxAssociations int  `yaml:"max_associations,omitempty"`
 }
 
+// ExternalEndpointConfig is the node-level config section for explicitly
+// configured externally reachable endpoint information.
+//
+// Transitloom does not automatically infer DNAT rules from local observation.
+// This section allows operators to explicitly declare:
+//   - the public-facing IP or hostname
+//   - DNAT-forwarded ports that map external ports to local mesh listener ports
+//
+// This information is used for direct-path reachability advertisement.
+// It is not a substitute for full NAT traversal — it is explicit operator
+// knowledge about the network topology.
+//
+// The intended precedence for external endpoint information is:
+//  1. Configured (this section) — highest precedence
+//  2. Router-discovered (UPnP/PCP/NAT-PMP) — future
+//  3. Probe-discovered (targeted external probing) — future
+//  4. Coordinator-observed public IP + configured port — future
+type ExternalEndpointConfig struct {
+	// PublicHost is the external IP address or hostname that remote nodes
+	// should use to reach this node from outside the local network.
+	//
+	// When empty, no explicit public host is configured. The coordinator may
+	// observe the node's public IP separately via the connection source
+	// address, but that observation alone is not sufficient to determine
+	// which inbound ports are usable — the observed IP cannot reveal what
+	// DNAT rules exist on the router.
+	PublicHost string `yaml:"public_host,omitempty"`
+
+	// ForwardedPorts lists explicitly configured DNAT forwarding rules.
+	// Each entry declares that a router is forwarding ExternalPort on the
+	// public-facing address to LocalPort on this node's local interface.
+	//
+	// ExternalPort and LocalPort must not be collapsed into a single
+	// undifferentiated "port" field. In DNAT deployments they differ, and
+	// treating them as identical would silently break inbound reachability.
+	//
+	// When empty, no DNAT mappings are explicitly configured. Blind full-range
+	// port probing is not the default fallback — explicit configuration is
+	// required for DNAT cases.
+	ForwardedPorts []ForwardedPortConfig `yaml:"forwarded_ports,omitempty"`
+}
+
+// ForwardedPortConfig declares a single DNAT port forwarding mapping.
+//
+// It records that an external router is forwarding ExternalPort (on the
+// public-facing address) to LocalPort on this node's local interface.
+//
+// These two ports must remain separate fields:
+//   - ExternalPort: what remote nodes use to reach this node from outside
+//   - LocalPort: what the local Transitloom data plane actually listens on
+//
+// Collapsing them into one field would break DNAT deployments silently.
+type ForwardedPortConfig struct {
+	// ExternalPort is the port number exposed on the public-facing router
+	// address. Remote nodes send traffic to this port.
+	ExternalPort uint16 `yaml:"external_port"`
+
+	// LocalPort is the local UDP port that receives forwarded traffic from
+	// the router. Must match an active Transitloom mesh listener port.
+	LocalPort uint16 `yaml:"local_port"`
+
+	// Description is an optional human-readable note for this forwarding
+	// entry (e.g., which association or service this port serves).
+	Description string `yaml:"description,omitempty"`
+}
+
 // AssociationConfig declares a desired association between a local service
 // and a remote service on another node. This is the node-local config intent;
 // the coordinator validates and records the association separately.

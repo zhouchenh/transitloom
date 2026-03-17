@@ -10,7 +10,7 @@ External endpoint advertisement and DNAT-aware reachability basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 

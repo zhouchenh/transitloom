@@ -172,6 +172,23 @@ These distinctions are important and must not be casually collapsed.
 
 ---
 
+## Durable external endpoint and DNAT-aware reachability decisions
+
+These decisions are settled unless deliberately changed through specs.
+
+- `ExternalEndpoint` in `internal/transport` is the explicit type for externally reachable endpoints; it must not be confused with local target, local ingress, or mesh/runtime port
+- `EndpointSource` has four values in precedence order: configured > router-discovered > probe-discovered > coordinator-observed; configured is the highest-confidence source
+- `VerificationState` has four values: unverified (usable, represents operator intent), verified (confirmed reachable), stale (must revalidate), failed (must revalidate)
+- Stale and failed endpoints must not be used for direct-path decisions without revalidation; endpoint knowledge must not be treated as timeless truth
+- Endpoint knowledge must become stale after unhealthy/down events; this is enforced via `MarkStale()` + `IsUsable()` contract
+- `ExternalEndpoint.Port` (external) and `ExternalEndpoint.LocalPort` (local mesh listener) must never be collapsed into one undifferentiated field; in DNAT deployments they differ and conflating them silently breaks inbound reachability
+- `HasDNAT()` and `EffectiveLocalPort()` are the correct accessors for DNAT-aware logic; callers should not inspect `Port` and `LocalPort` directly
+- `ExternalEndpointConfig` and `ForwardedPortConfig` are in `internal/config/common.go`; `NodeConfig` carries `ExternalEndpoint ExternalEndpointConfig`
+- `RouterDiscoveryHint` and `ProbeResult` are placeholder types in `internal/transport`; they reserve semantic space for future UPnP/PCP/NAT-PMP and probe-verification code so those implementations use the correct source categories rather than overloading local service binding fields
+- Full UPnP/PCP/NAT-PMP implementation and blind full-range port probing are explicitly out of scope; targeted probing and router-protocol discovery are future work
+- `NewConfiguredEndpoint()` is the canonical constructor for operator-configured external endpoints; it sets source=configured, verification=unverified
+- Coordinator observation of a source address (public IP) is insufficient to infer usable inbound ports; the coordinator cannot observe DNAT rules on the router
+
 ## Durable WireGuard-over-mesh decisions
 
 - WireGuard is the flagship documented v1 use case

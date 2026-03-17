@@ -50,11 +50,34 @@ Transitloom does **not** yet have meaningful implementation of:
 
 ## Active task
 
-No active task. Next task from queue: transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
+No active task. Next task from queue: transport-security maturation
+(QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback), or path-candidate
+distribution refinement building on the new external endpoint model.
 
 ---
 
 ## Recently completed
+
+### T-0015 — external endpoint advertisement and DNAT-aware reachability basics
+**status:** completed
+**task file:** `agents/tasks/T-0015-external-endpoint-advertisement-and-dnat-aware-reachability-basics.md`
+
+Implemented explicit external-endpoint advertisement and DNAT-aware
+reachability modeling in `internal/transport/endpoint.go`. Defined
+`ExternalEndpoint`, `EndpointSource` (configured/router-discovered/
+probe-discovered/coordinator-observed), `VerificationState`
+(unverified/verified/stale/failed), `RouterDiscoveryHint`,
+`ProbeResult`, `NewConfiguredEndpoint`, `ValidateAddrPort`, and state
+transition methods (MarkStale/MarkVerified/MarkFailed). Added
+`ExternalEndpointConfig` + `ForwardedPortConfig` to
+`internal/config/common.go` with DNAT-aware external_port/local_port
+separation, wired `external_endpoint` into `NodeConfig.Validate()`.
+Added 11 focused test functions (with subtests) covering: Validate,
+DNAT distinctions, state transitions, usability contract,
+source-of-knowledge semantics, RouterDiscoveryHint conversion,
+ProbeResult application, ValidateAddrPort, constructor, and
+stale-after-down revalidation pattern.
+`go build ./...` and `go test ./...` both pass.
 
 ### T-0013 — runtime observability and debugging basics
 **status:** completed
@@ -72,7 +95,6 @@ coordinator `BootstrapListener` surfacing current registry and association state
 Added 13 focused tests covering key semantic distinctions (applied vs computed
 carrier state, stripe-gap visibility, "ready ≠ authorized", "pending ≠ active",
 bootstrap-placeholder labeling, zero-counter suppression, etc.).
-`go build ./...` and `go test ./...` both pass.
 
 ### T-0014 — scheduler-to-carrier integration
 **status:** completed

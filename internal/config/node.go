@@ -12,9 +12,15 @@ type NodeConfig struct {
 	Services              []ServiceConfig              `yaml:"services"`
 	Associations          []AssociationConfig          `yaml:"associations,omitempty"`
 	LocalIngress          LocalIngressPolicyConfig     `yaml:"local_ingress"`
-	Discovery             NodeDiscoveryConfig          `yaml:"discovery"`
-	Relay                 NodeRelayConfig              `yaml:"relay"`
-	Observability         ObservabilityConfig          `yaml:"observability"`
+	// ExternalEndpoint carries explicitly configured external reachability
+	// information for this node. This is distinct from local service bindings,
+	// local ingress ports, and mesh listener ports. It represents what remote
+	// nodes should use to reach this node from outside the local network,
+	// including through DNAT rules on a router.
+	ExternalEndpoint ExternalEndpointConfig       `yaml:"external_endpoint,omitempty"`
+	Discovery        NodeDiscoveryConfig          `yaml:"discovery"`
+	Relay            NodeRelayConfig              `yaml:"relay"`
+	Observability    ObservabilityConfig          `yaml:"observability"`
 }
 
 type NodeIdentityConfig struct {
@@ -64,6 +70,8 @@ func (c NodeConfig) Validate() error {
 	for i, assoc := range c.Associations {
 		validateAssociation(fmt.Sprintf("associations[%d]", i), assoc, serviceNames, &errs)
 	}
+
+	validateExternalEndpoint("external_endpoint", c.ExternalEndpoint, &errs)
 
 	if c.Relay.MaxAssociations < 0 {
 		errs.add("relay.max_associations", "must be zero or greater")

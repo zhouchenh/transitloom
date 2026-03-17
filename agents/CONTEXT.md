@@ -188,6 +188,8 @@ Control-plane transport hardening (T-0012) is now implemented. `internal/control
 
 Runtime observability and debugging basics (T-0013) are now implemented. `internal/status` package now provides narrow, explicit summary types: `BootstrapSummary` (node local readiness — not coordinator authorization), `ServiceRegistrySummary` (coordinator service registry snapshot), `AssociationStoreSummary` (coordinator association snapshot), `ScheduledEgressSummary` (applied scheduler/carrier state with live traffic counters). Each type has `ReportLines()` for operator-friendly logging. `ScheduledEgressRuntime.Snapshot()` in `internal/node` returns a live `ScheduledEgressSummary` by combining stored activation results with live carrier counters (`DirectCarrier.IngressStats` / `RelayEgressCarrier.EgressStats`). `BootstrapListener.RuntimeSummaryLines()` in `internal/coordinator` surfaces current service registry and association state. 13 focused tests cover key semantic distinctions (applied vs computed state, stripe-gap visibility, "ready ≠ authorized", "pending ≠ active", bootstrap-placeholder labeling). `go build ./...` and `go test ./...` pass.
 
+External endpoint advertisement and DNAT-aware reachability basics (T-0015) are now implemented. `internal/transport/endpoint.go` defines `ExternalEndpoint`, `EndpointSource` (configured/router-discovered/probe-discovered/coordinator-observed), `VerificationState` (unverified/verified/stale/failed), `RouterDiscoveryHint`, `ProbeResult`, `NewConfiguredEndpoint`, `ValidateAddrPort`, and MarkStale/MarkVerified/MarkFailed state transitions. `internal/config/common.go` now carries `ExternalEndpointConfig` (with `PublicHost` and `ForwardedPorts`) and `ForwardedPortConfig` (with separate `ExternalPort` and `LocalPort` to preserve DNAT-awareness). `NodeConfig` now carries `ExternalEndpoint ExternalEndpointConfig` and validates it. The model explicitly separates local target, local ingress, mesh/runtime port, and external advertised endpoint. Narrow placeholder types for future UPnP/PCP/NAT-PMP discovery and targeted probing are defined. 11 focused test functions covering all modeling behavior pass.
+
 ---
 
 ## Current v1 architectural boundaries
@@ -297,10 +299,13 @@ The completed implementation tasks are:
 - `T-0011 — scheduler baseline and multi-WAN refinement`
 - `T-0012 — control-plane transport hardening`
 - `T-0013 — runtime observability and debugging basics`
+- `T-0014 — scheduler-to-carrier integration`
+- `T-0015 — external endpoint advertisement and DNAT-aware reachability basics`
 
 The next practical implementation task is:
 
-- transport-security maturation task (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
+- transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback), or
+- path-candidate distribution refinement building on the new external endpoint model.
 
 ---
 
@@ -431,7 +436,8 @@ Transitloom is currently a **well-specified and now meaningfully implemented** p
 - no substantive issuance code yet
 
 The correct next move is to keep the `agents/` workspace accurate and continue
-the staged implementation order. T-0013 is complete; next is transport-security
-maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
+the staged implementation order. T-0015 is complete; next is transport-security
+maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback) or path-candidate
+distribution refinement building on the new external endpoint model.
 
 ---

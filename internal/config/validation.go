@@ -285,6 +285,46 @@ func validateDuration(field, value string, errs *validationErrors) {
 	}
 }
 
+// validateExternalEndpoint validates ExternalEndpointConfig fields.
+// An empty ExternalEndpointConfig is valid (it means no explicit external
+// endpoint is configured for this node).
+func validateExternalEndpoint(prefix string, ext ExternalEndpointConfig, errs *validationErrors) {
+	if strings.TrimSpace(ext.PublicHost) != "" {
+		// Accept IP addresses and hostnames. An IP address is preferred but
+		// hostnames are allowed for dynamic-DNS cases.
+		host := strings.TrimSpace(ext.PublicHost)
+		if _, err := netip.ParseAddr(host); err != nil {
+			// Not an IP address. Apply a minimal sanity check: the value
+			// should look like a hostname (no spaces or control characters).
+			for _, c := range host {
+				if c < 0x21 || c == 0x7F {
+					errs.add(prefix+".public_host",
+						"must be a valid IP address or hostname")
+					break
+				}
+			}
+		}
+	}
+
+	for i, fwd := range ext.ForwardedPorts {
+		validateForwardedPort(fmt.Sprintf("%s.forwarded_ports[%d]", prefix, i), fwd, errs)
+	}
+}
+
+// validateForwardedPort validates a single ForwardedPortConfig entry.
+// Both ExternalPort and LocalPort must be nonzero because they represent
+// distinct concepts that must not be collapsed.
+func validateForwardedPort(prefix string, fwd ForwardedPortConfig, errs *validationErrors) {
+	if fwd.ExternalPort == 0 {
+		errs.add(prefix+".external_port",
+			"must be greater than zero (the port exposed on the public-facing router address)")
+	}
+	if fwd.LocalPort == 0 {
+		errs.add(prefix+".local_port",
+			"must be greater than zero (the local Transitloom mesh listener port)")
+	}
+}
+
 func validateAssociation(prefix string, assoc AssociationConfig, serviceNames map[string]struct{}, errs *validationErrors) {
 	if strings.TrimSpace(assoc.SourceService) == "" {
 		errs.add(prefix+".source_service", "must be set")
