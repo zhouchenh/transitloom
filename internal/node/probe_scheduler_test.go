@@ -743,3 +743,38 @@ func TestExecuteProbeRound_NilRegistry(t *testing.T) {
 		t.Error("expected quality to be updated even with nil registry")
 	}
 }
+
+func TestRunProbeLoop_CallsOnRoundWhenNoTargets(t *testing.T) {
+	registry := transport.NewEndpointRegistry()
+	qualityStore := scheduler.NewPathQualityStore(scheduler.DefaultQualityMaxAge)
+	executor := newFakeProbeExecutor()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	roundCh := make(chan ProbeRoundResult, 1)
+	go RunProbeLoop(
+		ctx,
+		ProbeSchedulerConfig{ProbeInterval: 10 * time.Millisecond, MaxTargetsPerRound: 5},
+		registry,
+		nil,
+		nil,
+		executor,
+		qualityStore,
+		func(result ProbeRoundResult) {
+			select {
+			case roundCh <- result:
+			default:
+			}
+		},
+	)
+
+	select {
+	case round := <-roundCh:
+		if round.TargetsSelected != 0 {
+			t.Fatalf("expected zero targets in no-target round, got %d", round.TargetsSelected)
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected onRound callback for no-target round")
+	}
+}

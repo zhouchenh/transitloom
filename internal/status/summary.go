@@ -122,7 +122,24 @@ type ScheduledEgressSummary struct {
 	TotalFailed     int
 	TotalNoEligible int
 	Entries         []ScheduledEgressEntry
+	ProbeLoop       ProbeLoopSummary
 	RecentEvents    []Event
+}
+
+type ProbeLoopSummary struct {
+	State              string
+	Reason             string
+	ProbeInterval      time.Duration
+	MaxTargetsPerRound int
+	LastRoundAt        time.Time
+	LastRound          ProbeLoopRoundSummary
+}
+
+type ProbeLoopRoundSummary struct {
+	TargetsSelected int
+	Reachable       int
+	Unreachable     int
+	Errors          int
 }
 
 // ScheduledEgressEntry describes one association's applied carrier state.

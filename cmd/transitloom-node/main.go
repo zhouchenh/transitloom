@@ -122,6 +122,28 @@ func main() {
 
 		if scheduledResult.TotalActive > 0 {
 			log.Printf("transitloom-node scheduler-guided carriage active: %d association(s); scheduler chose path per association (direct preferred over relay)", scheduledResult.TotalActive)
+			probeStarted := scheduledRuntime.StartProbeLoop(
+				runtimeCtx,
+				node.DefaultProbeSchedulerConfig(),
+				scheduledInputs,
+				transport.UDPProbeExecutor{},
+			)
+			probeStatus := scheduledRuntime.Snapshot().ProbeLoop
+			if probeStarted {
+				log.Printf(
+					"transitloom-node probe loop started: state=%s interval=%s max-targets=%d",
+					probeStatus.State,
+					probeStatus.ProbeInterval,
+					probeStatus.MaxTargetsPerRound,
+				)
+			} else {
+				log.Printf(
+					"transitloom-node probe loop not started: state=%s reason=%s",
+					probeStatus.State,
+					probeStatus.Reason,
+				)
+			}
+
 			controlRuntime := node.NewControlSessionRuntime(
 				cfg,
 				bootstrap,

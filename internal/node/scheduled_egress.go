@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/zhouchenh/transitloom/internal/config"
 	"github.com/zhouchenh/transitloom/internal/scheduler"
@@ -104,6 +105,8 @@ type ScheduledEgressRuntime struct {
 	// creates a StickinessStore with DefaultMultiWANStickinessConfig automatically.
 	StickinessStore *AssociationStickinessStore
 
+	probeLoop status.ProbeLoopSummary
+
 	// mu protects lastActivations from concurrent reads and writes.
 	mu sync.RWMutex
 	// lastActivations holds the results from the most recent ActivateScheduledEgress
@@ -129,6 +132,12 @@ func NewScheduledEgressRuntime() *ScheduledEgressRuntime {
 		FallbackStore:   NewAssociationFallbackStore(DefaultFallbackConfig()),
 		StickinessStore: NewAssociationStickinessStore(DefaultMultiWANStickinessConfig()),
 		EventHistory:    status.NewEventHistory(100), // Bounded to last 100 path events
+		probeLoop: status.ProbeLoopSummary{
+			State:              "disabled",
+			Reason:             "probe loop not started",
+			ProbeInterval:      DefaultProbeInterval,
+			MaxTargetsPerRound: DefaultMaxProbeTargetsPerRound,
+		},
 	}
 }
 
@@ -576,6 +585,87 @@ func recordActivationEvents(history *status.EventHistory, oldActs, newActs []Sch
 	}
 }
 
+func (r *ScheduledEgressRuntime) StartProbeLoop(
+	ctx context.Context,
+	cfg ProbeSchedulerConfig,
+	inputs []ScheduledActivationInput,
+	executor transport.ProbeExecutor,
+) bool {
+	interval := cfg.ProbeInterval
+	if interval <= 0 {
+		interval = DefaultProbeInterval
+	}
+	maxTargets := cfg.MaxTargetsPerRound
+	if maxTargets <= 0 {
+		maxTargets = DefaultMaxProbeTargetsPerRound
+	}
+
+	r.mu.Lock()
+	r.probeLoop.ProbeInterval = interval
+	r.probeLoop.MaxTargetsPerRound = maxTargets
+	r.mu.Unlock()
+
+	if len(inputs) == 0 {
+		r.setProbeLoopState("disabled", "no scheduled associations", status.ProbeLoopRoundSummary{})
+		return false
+	}
+	if executor == nil {
+		r.setProbeLoopState("blocked", "probe executor is not configured", status.ProbeLoopRoundSummary{})
+		return false
+	}
+	if r.EndpointRegistry == nil {
+		r.setProbeLoopState("blocked", "endpoint registry is not configured", status.ProbeLoopRoundSummary{})
+		return false
+	}
+	if r.QualityStore == nil {
+		r.setProbeLoopState("blocked", "quality store is not configured", status.ProbeLoopRoundSummary{})
+		return false
+	}
+
+	r.setProbeLoopState("active", "", status.ProbeLoopRoundSummary{})
+
+	go RunProbeLoop(
+		ctx,
+		cfg,
+		r.EndpointRegistry,
+		inputs,
+		r.CandidateStore,
+		executor,
+		r.QualityStore,
+		func(result ProbeRoundResult) {
+			round := status.ProbeLoopRoundSummary{
+				TargetsSelected: result.TargetsSelected,
+				Reachable:       result.Reachable,
+				Unreachable:     result.Unreachable,
+				Errors:          result.Errors,
+			}
+			if result.TargetsSelected == 0 {
+				r.setProbeLoopState("waiting-prerequisites", "no probe targets selected", round)
+				return
+			}
+			r.setProbeLoopState("active", "", round)
+		},
+	)
+
+	go func() {
+		<-ctx.Done()
+		r.setProbeLoopState("stopped", "runtime context cancelled", status.ProbeLoopRoundSummary{})
+	}()
+
+	return true
+}
+
+func (r *ScheduledEgressRuntime) setProbeLoopState(state, reason string, round status.ProbeLoopRoundSummary) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.probeLoop.State = state
+	r.probeLoop.Reason = reason
+	if round.TargetsSelected > 0 || round.Errors > 0 || state == "waiting-prerequisites" {
+		r.probeLoop.LastRound = round
+		r.probeLoop.LastRoundAt = time.Now().UTC()
+	}
+}
+
 // Snapshot returns a current point-in-time snapshot of the scheduled egress
 // runtime state, combining the last activation results with live carrier counters.
 //
@@ -596,6 +686,7 @@ func recordActivationEvents(history *status.EventHistory, oldActs, newActs []Sch
 func (r *ScheduledEgressRuntime) Snapshot() status.ScheduledEgressSummary {
 	r.mu.RLock()
 	activations := append([]ScheduledEgressActivation(nil), r.lastActivations...)
+	probeLoop := r.probeLoop
 	r.mu.RUnlock()
 
 	entries := make([]status.ScheduledEgressEntry, 0, len(activations))
@@ -647,6 +738,7 @@ func (r *ScheduledEgressRuntime) Snapshot() status.ScheduledEgressSummary {
 		TotalFailed:     totalFailed,
 		TotalNoEligible: totalNoEligible,
 		Entries:         entries,
+		ProbeLoop:       probeLoop,
 	}
 
 	if r.EventHistory != nil {

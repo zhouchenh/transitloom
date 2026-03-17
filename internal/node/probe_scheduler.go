@@ -465,8 +465,9 @@ func RunProbeLoop(
 		// Select bounded targeted probe targets.
 		targets := SelectProbeTargets(registry, pathIDMap, maxTargets)
 		if len(targets) == 0 {
-			// No endpoints need probing this round. This is normal when all
-			// endpoints are recently verified. No-op is correct here.
+			if onRound != nil {
+				onRound(ProbeRoundResult{})
+			}
 			return
 		}
 

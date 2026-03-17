@@ -1241,3 +1241,64 @@ func TestRecordActivationEvents(t *testing.T) {
 	}
 }
 
+func TestStartProbeLoop_BlockedWithoutEndpointRegistry(t *testing.T) {
+	rt := NewScheduledEgressRuntime()
+	rt.EndpointRegistry = nil
+
+	inputs := []ScheduledActivationInput{
+		{AssociationID: "assoc-1"},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	started := rt.StartProbeLoop(ctx, DefaultProbeSchedulerConfig(), inputs, transport.UDPProbeExecutor{})
+	if started {
+		t.Fatal("expected probe loop start to fail without endpoint registry")
+	}
+
+	summary := rt.Snapshot()
+	if summary.ProbeLoop.State != "blocked" {
+		t.Fatalf("expected probe loop state=blocked, got %q", summary.ProbeLoop.State)
+	}
+	if summary.ProbeLoop.Reason == "" {
+		t.Fatal("expected blocked reason to be populated")
+	}
+}
+
+func TestStartProbeLoop_ReportsWaitingWhenNoTargets(t *testing.T) {
+	rt := NewScheduledEgressRuntime()
+	rt.EndpointRegistry = transport.NewEndpointRegistry()
+
+	inputs := []ScheduledActivationInput{
+		{AssociationID: "assoc-1"},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	started := rt.StartProbeLoop(
+		ctx,
+		ProbeSchedulerConfig{ProbeInterval: 10 * time.Millisecond, MaxTargetsPerRound: 1},
+		inputs,
+		newFakeProbeExecutor(),
+	)
+	if !started {
+		t.Fatal("expected probe loop to start")
+	}
+
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		summary := rt.Snapshot()
+		if summary.ProbeLoop.State == "waiting-prerequisites" {
+			if summary.ProbeLoop.LastRound.TargetsSelected != 0 {
+				t.Fatalf("expected zero selected targets, got %d", summary.ProbeLoop.LastRound.TargetsSelected)
+			}
+			if summary.ProbeLoop.LastRoundAt.IsZero() {
+				t.Fatal("expected last round timestamp to be set")
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatalf("expected probe loop state to reach waiting-prerequisites, got %q", rt.Snapshot().ProbeLoop.State)
+}

@@ -169,9 +169,9 @@ registration path.
 - no live certificate-chain validation during sessions (application-layer admission-token enforcement not yet implemented)
 - no service discovery implementation
 - no live association lifecycle management or policy evaluation
-- live path quality measurement basics (T-0019) implemented: PathQualityStore with EWMA RTT/jitter/loss/confidence, freshness-aware staleness, wired into ScheduledEgressRuntime before Scheduler.Decide(); PathQualitySummary in internal/status for observability; probe-result and direct-update entry points present; active probe scheduling loop now wired via T-0029 (RunProbeLoop, ExecuteProbeRound)
+- live path quality measurement basics (T-0019) implemented: PathQualityStore with EWMA RTT/jitter/loss/confidence, freshness-aware staleness, wired into ScheduledEgressRuntime before Scheduler.Decide(); PathQualitySummary in internal/status for observability; probe-result and direct-update entry points present; active probe scheduling loop now wired via T-0029 (RunProbeLoop, ExecuteProbeRound) and live runtime lifecycle integration/status visibility added in T-0030
 - no multi-path carrier load balancing at the socket level
-- coordinator-distributed path candidates (distribution/consumption T-0018 done; refinement layer T-0020 done; candidate refresh/revalidation automation T-0022 done — `CandidateFreshnessStore` + `SelectCandidateRefreshTargets` + `ExecuteCandidateRefresh` provide bounded coordinator re-fetch when candidates go stale; active probe scheduling loop now wired via T-0029 — `RunProbeLoop` drives `SelectProbeTargets` + `ExecuteProbeRound` on a ticker)
+- coordinator-distributed path candidates (distribution/consumption T-0018 done; refinement layer T-0020 done; candidate refresh/revalidation automation T-0022 done — `CandidateFreshnessStore` + `SelectCandidateRefreshTargets` + `ExecuteCandidateRefresh` provide bounded coordinator re-fetch when candidates go stale; active probe scheduling loop now wired via T-0029 — `RunProbeLoop` drives `SelectProbeTargets` + `ExecuteProbeRound` on a ticker; T-0030 integrates loop start/stop with node runtime context and exposes probe-loop state/last-round status in node runtime summaries)
 
 The first WireGuard-over-mesh direct-path validation now works end-to-end. Direct raw UDP carriage is wired into the node startup flow via `DirectPathRuntime`. Standard WireGuard can use Transitloom local ingress ports as peer endpoints on a direct path with zero in-band overhead.
 
@@ -350,6 +350,7 @@ The completed implementation tasks are:
 - `T-0026 — path change event history and audit basics`
 - `T-0028 — config profile and policy bundling basics`
 - `T-0029 — active probe scheduling and path usability signal wiring basics`
+- `T-0030 — live node probe-loop lifecycle integration basics`
 
 The next practical implementation tasks are:
 

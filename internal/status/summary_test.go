@@ -473,3 +473,49 @@ func TestControlReconciliationSummary_ReportLinesFailure(t *testing.T) {
 		t.Fatalf("missing failure reason: %s", joined)
 	}
 }
+
+func TestScheduledEgressSummary_ProbeLoopLines(t *testing.T) {
+	s := status.ScheduledEgressSummary{
+		ProbeLoop: status.ProbeLoopSummary{
+			State:              "active",
+			Reason:             "",
+			ProbeInterval:      30 * time.Second,
+			MaxTargetsPerRound: 10,
+			LastRoundAt:        time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC),
+			LastRound: status.ProbeLoopRoundSummary{
+				TargetsSelected: 4,
+				Reachable:       3,
+				Unreachable:     1,
+			},
+		},
+	}
+
+	lines := s.ReportLines()
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "probe-loop: state=active") {
+		t.Fatalf("missing probe-loop state line: %s", joined)
+	}
+	if !strings.Contains(joined, "max-targets=10") {
+		t.Fatalf("missing probe-loop max-targets line: %s", joined)
+	}
+	if !strings.Contains(joined, "probe-loop-last-round") {
+		t.Fatalf("missing probe-loop last-round line: %s", joined)
+	}
+}
+
+func TestScheduledEgressSummary_ProbeLoopReasonLine(t *testing.T) {
+	s := status.ScheduledEgressSummary{
+		ProbeLoop: status.ProbeLoopSummary{
+			State:              "blocked",
+			Reason:             "endpoint registry is not configured",
+			ProbeInterval:      30 * time.Second,
+			MaxTargetsPerRound: 10,
+		},
+	}
+
+	lines := s.ReportLines()
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "probe-loop-reason: endpoint registry is not configured") {
+		t.Fatalf("missing probe-loop reason line: %s", joined)
+	}
+}

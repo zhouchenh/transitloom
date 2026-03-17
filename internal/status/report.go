@@ -65,6 +65,25 @@ func (s ScheduledEgressSummary) ReportLines() []string {
 		"scheduled-egress-summary: active=%d failed=%d no-eligible=%d",
 		s.TotalActive, s.TotalFailed, s.TotalNoEligible,
 	))
+	lines = append(lines, fmt.Sprintf(
+		"probe-loop: state=%s interval=%s max-targets=%d",
+		describeField(s.ProbeLoop.State, "disabled"),
+		s.ProbeLoop.ProbeInterval,
+		s.ProbeLoop.MaxTargetsPerRound,
+	))
+	if s.ProbeLoop.Reason != "" {
+		lines = append(lines, fmt.Sprintf("  probe-loop-reason: %s", s.ProbeLoop.Reason))
+	}
+	if !s.ProbeLoop.LastRoundAt.IsZero() {
+		lines = append(lines, fmt.Sprintf(
+			"  probe-loop-last-round: at=%s selected=%d reachable=%d unreachable=%d errors=%d",
+			s.ProbeLoop.LastRoundAt.Format(time.RFC3339),
+			s.ProbeLoop.LastRound.TargetsSelected,
+			s.ProbeLoop.LastRound.Reachable,
+			s.ProbeLoop.LastRound.Unreachable,
+			s.ProbeLoop.LastRound.Errors,
+		))
+	}
 
 	for _, e := range s.Entries {
 		// First line: applied carrier state and scheduler mode side by side.

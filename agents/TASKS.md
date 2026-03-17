@@ -50,9 +50,25 @@ Transitloom does **not** yet have meaningful implementation of:
 
 ## Active task
 
-None. T-0029 has been completed. See queued tasks below for the next work.
+None. T-0030 has been completed. See queued tasks below for the next work.
 
 ## Recently completed
+
+### T-0030 — live node probe-loop lifecycle integration basics
+**status:** completed
+**task file:** `agents/tasks/T-0030-live-node-probe-loop-lifecycle-integration-basics.md`
+
+Implemented the first bounded live lifecycle integration for the active probe loop.
+`cmd/transitloom-node/main.go` now starts the probe loop during live runtime after
+scheduled egress activation and ties cancellation to the node runtime context.
+`internal/node/scheduled_egress.go` now owns probe-loop lifecycle/status state with
+explicit states (`disabled`, `blocked`, `active`, `waiting-prerequisites`, `stopped`)
+and last-round counters/timestamp. `internal/node/probe_scheduler.go` now reports
+zero-target rounds through `onRound`, keeping waiting state inspectable instead of
+hidden idle behavior. `internal/status` now exposes probe-loop runtime summary in
+`ScheduledEgressSummary` and status report output. Added focused tests for blocked
+prerequisites, waiting/no-target lifecycle behavior, no-target callback delivery,
+and probe-loop status reporting. `go build ./...` and `go test ./...` pass.
 
 ### T-0029 — active probe scheduling and path usability signal wiring basics
 **status:** completed
@@ -475,7 +491,6 @@ multi-WAN, or encrypted carriage support.
 
 The next implementation tasks are:
 - [x] **T-0028**: config profile and policy bundling basics
-- runtime integration of distributed path candidates into the scheduler/carrier selection flow
 - node enrollment flow (certificate issuance)
 - application-layer admission-token enforcement on the secure control transport
 - QUIC+TLS 1.3 mTLS primary transport (QUIC wrapper around existing PKI material)
