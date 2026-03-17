@@ -305,7 +305,7 @@ func TestScheduledEgressSummary_StripeGapIsVisible(t *testing.T) {
 		Entries: []status.ScheduledEgressEntry{
 			{
 				AssociationID:    "assoc-1",
-				CarrierActivated: "direct",   // single path activated
+				CarrierActivated: "direct",            // single path activated
 				SchedulerMode:    "per-packet-stripe", // scheduler wanted stripe
 				SchedulerReason:  "paths closely matched",
 			},
@@ -420,4 +420,56 @@ func TestScheduledEgressSummary_TrafficCounters(t *testing.T) {
 			t.Errorf("must not emit zero counters for non-running carriers; got:\n%s", joined)
 		}
 	})
+}
+
+func TestControlReconciliationSummary_ReportLinesShowsStateBoundaries(t *testing.T) {
+	s := status.ControlReconciliationSummary{
+		Phase:                    status.ControlReconciliationPhaseReconciled,
+		TransportMode:            "bootstrap-only-http",
+		CurrentCoordinator:       "coord-a",
+		TransportConnected:       true,
+		SessionEstablished:       true,
+		SessionAuthenticated:     false,
+		LogicalStateReconciled:   true,
+		ServiceRefresh:           status.ControlReconciliationStepSucceeded,
+		AssociationRefresh:       status.ControlReconciliationStepSucceeded,
+		PathCandidateRefresh:     status.ControlReconciliationStepSucceeded,
+		LastTransitionAt:         time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC),
+		LastTransportReconnectAt: time.Date(2026, 3, 17, 11, 59, 0, 0, time.UTC),
+		LastSessionEstablishedAt: time.Date(2026, 3, 17, 11, 59, 30, 0, time.UTC),
+		LastReconciledAt:         time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC),
+	}
+
+	lines := s.ReportLines()
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "transport-connected=true") {
+		t.Fatalf("missing transport state: %s", joined)
+	}
+	if !strings.Contains(joined, "session-established=true") {
+		t.Fatalf("missing session state: %s", joined)
+	}
+	if !strings.Contains(joined, "session-authenticated=false") {
+		t.Fatalf("missing session authentication state: %s", joined)
+	}
+	if !strings.Contains(joined, "logical-state-reconciled=true") {
+		t.Fatalf("missing reconciliation state: %s", joined)
+	}
+}
+
+func TestControlReconciliationSummary_ReportLinesFailure(t *testing.T) {
+	s := status.ControlReconciliationSummary{
+		Phase:                status.ControlReconciliationPhaseReconciliationFailed,
+		ServiceRefresh:       status.ControlReconciliationStepFailed,
+		AssociationRefresh:   status.ControlReconciliationStepPending,
+		PathCandidateRefresh: status.ControlReconciliationStepPending,
+		LastFailure:          "service refresh failed: timeout",
+	}
+	lines := s.ReportLines()
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "phase=reconciliation-failed") {
+		t.Fatalf("missing failed phase: %s", joined)
+	}
+	if !strings.Contains(joined, "last-failure=service refresh failed: timeout") {
+		t.Fatalf("missing failure reason: %s", joined)
+	}
 }

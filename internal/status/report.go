@@ -155,3 +155,47 @@ func (s ScheduledEgressSummary) ReportLines() []string {
 
 	return lines
 }
+
+func (s ControlReconciliationSummary) ReportLines() []string {
+	lines := []string{
+		fmt.Sprintf(
+			"control-reconciliation: phase=%s transport-connected=%v session-established=%v session-authenticated=%v logical-state-reconciled=%v transport-mode=%s coordinator=%s",
+			s.Phase,
+			s.TransportConnected,
+			s.SessionEstablished,
+			s.SessionAuthenticated,
+			s.LogicalStateReconciled,
+			describeField(s.TransportMode, "<unknown>"),
+			describeField(s.CurrentCoordinator, "<unknown>"),
+		),
+		fmt.Sprintf(
+			"  steps: service=%s association=%s path-candidates=%s",
+			s.ServiceRefresh,
+			s.AssociationRefresh,
+			s.PathCandidateRefresh,
+		),
+	}
+	if !s.LastTransitionAt.IsZero() {
+		lines = append(lines, fmt.Sprintf("  last-transition-at=%s", s.LastTransitionAt.Format("2006-01-02T15:04:05Z07:00")))
+	}
+	if !s.LastTransportReconnectAt.IsZero() {
+		lines = append(lines, fmt.Sprintf("  last-transport-reconnect-at=%s", s.LastTransportReconnectAt.Format("2006-01-02T15:04:05Z07:00")))
+	}
+	if !s.LastSessionEstablishedAt.IsZero() {
+		lines = append(lines, fmt.Sprintf("  last-session-established-at=%s", s.LastSessionEstablishedAt.Format("2006-01-02T15:04:05Z07:00")))
+	}
+	if !s.LastReconciledAt.IsZero() {
+		lines = append(lines, fmt.Sprintf("  last-reconciled-at=%s", s.LastReconciledAt.Format("2006-01-02T15:04:05Z07:00")))
+	}
+	if s.LastFailure != "" {
+		lines = append(lines, "  last-failure="+s.LastFailure)
+	}
+	return lines
+}
+
+func describeField(v, fallback string) string {
+	if v == "" {
+		return fallback
+	}
+	return v
+}

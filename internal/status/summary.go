@@ -237,6 +237,44 @@ type PathCandidateStatus struct {
 	Confidence   float64
 }
 
+type ControlReconciliationPhase string
+
+const (
+	ControlReconciliationPhaseDisconnected         ControlReconciliationPhase = "disconnected"
+	ControlReconciliationPhaseTransportReconnected ControlReconciliationPhase = "transport-reconnected"
+	ControlReconciliationPhaseSessionEstablished   ControlReconciliationPhase = "session-established"
+	ControlReconciliationPhaseReconciling          ControlReconciliationPhase = "reconciling"
+	ControlReconciliationPhaseReconciled           ControlReconciliationPhase = "reconciled"
+	ControlReconciliationPhaseReconciliationFailed ControlReconciliationPhase = "reconciliation-failed"
+)
+
+type ControlReconciliationStep string
+
+const (
+	ControlReconciliationStepPending   ControlReconciliationStep = "pending"
+	ControlReconciliationStepSkipped   ControlReconciliationStep = "skipped"
+	ControlReconciliationStepSucceeded ControlReconciliationStep = "succeeded"
+	ControlReconciliationStepFailed    ControlReconciliationStep = "failed"
+)
+
+type ControlReconciliationSummary struct {
+	Phase                    ControlReconciliationPhase
+	TransportMode            string
+	CurrentCoordinator       string
+	TransportConnected       bool
+	SessionEstablished       bool
+	SessionAuthenticated     bool
+	LogicalStateReconciled   bool
+	ServiceRefresh           ControlReconciliationStep
+	AssociationRefresh       ControlReconciliationStep
+	PathCandidateRefresh     ControlReconciliationStep
+	LastFailure              string
+	LastTransitionAt         time.Time
+	LastTransportReconnectAt time.Time
+	LastSessionEstablishedAt time.Time
+	LastReconciledAt         time.Time
+}
+
 // MakeBootstrapSummary constructs a BootstrapSummary from node bootstrap state.
 //
 // The caller passes simple typed fields, keeping this package free of import

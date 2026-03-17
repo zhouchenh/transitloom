@@ -566,6 +566,18 @@ Operators can configure profiles at the node level and reference them in associa
 `tlctl node config` outputs fully resolved configuration per association for clarity and debuggability.
 Tests added for resolution, override logic, and `tlctl` inspect behavior. No deep inheritance or implicit overrides.
 
+T-0027 (control-plane session resume and state reconciliation basics) is now complete.
+`internal/node/session_reconcile.go` adds a bounded control-session runtime loop with
+explicit phases: disconnected, transport-reconnected, session-established, reconciling,
+reconciled, and reconciliation-failed. Reconciliation steps explicitly refresh service
+registration, associations, and path candidates after session re-establishment. Disconnect
+handling explicitly marks coordinator-derived candidate freshness stale and marks endpoint
+registry state stale, avoiding false freshness after reconnect. `internal/status` now
+includes `ControlReconciliationSummary` and `ReportLines()` to expose phase and per-step
+outcomes in node status output, keeping transport/session state distinct from logical
+reconciliation state. Focused tests were added in `internal/node/session_reconcile_test.go`
+and `internal/status/summary_test.go`.
+
 The correct next move is to continue the staged implementation order. Remaining priorities:
 - node enrollment flow (certificate issuance)
 - application-layer admission-token enforcement on the secure control transport

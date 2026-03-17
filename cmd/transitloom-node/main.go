@@ -13,6 +13,7 @@ import (
 	"github.com/zhouchenh/transitloom/internal/controlplane"
 	"github.com/zhouchenh/transitloom/internal/node"
 	"github.com/zhouchenh/transitloom/internal/status"
+	"github.com/zhouchenh/transitloom/internal/transport"
 )
 
 func main() {
@@ -104,6 +105,8 @@ func main() {
 	// remains standard — Transitloom carries raw UDP packets with zero in-band
 	// overhead regardless of whether the path is direct or relay-assisted.
 	scheduledRuntime := node.NewScheduledEgressRuntime()
+	scheduledRuntime.CandidateStore = node.NewCandidateStore()
+	scheduledRuntime.EndpointRegistry = transport.NewEndpointRegistry()
 	defer scheduledRuntime.Direct.Carrier.StopAll()
 	defer scheduledRuntime.Relay.Carrier.StopAll()
 
@@ -119,25 +122,29 @@ func main() {
 
 		if scheduledResult.TotalActive > 0 {
 			log.Printf("transitloom-node scheduler-guided carriage active: %d association(s); scheduler chose path per association (direct preferred over relay)", scheduledResult.TotalActive)
+			controlRuntime := node.NewControlSessionRuntime(
+				cfg,
+				bootstrap,
+				assocResults,
+				scheduledRuntime.CandidateStore,
+				scheduledRuntime.EndpointRegistry,
+				scheduledRuntime.QualityStore,
+			)
+			go func() {
+				if err := controlRuntime.Run(runtimeCtx); err != nil {
+					log.Printf("transitloom-node control session runtime error: %v", err)
+				}
+			}()
 
-			// Start the read-only status server if configured. The status
-			// server exposes current runtime state (bootstrap readiness,
-			// scheduled egress) at the observability.status listen address.
-			// This is what 'tlctl node status' queries.
-			//
-			// The status server is intentionally read-only. It exposes
-			// existing runtime state; it does not redefine or aggregate it.
 			if cfg.Observability.Status.Enabled && cfg.Observability.Status.Listen != "" {
 				capturedBootstrap := bootstrap
 				capturedRuntime := scheduledRuntime
+				capturedControl := controlRuntime
 				statusServer := status.NewStatusServer(func() []string {
-					// Snapshot aggregates distinct state categories:
-					// local bootstrap readiness (from disk) and applied
-					// egress state (scheduler decisions + carrier counters).
-					// These remain separate sections in the output.
 					var lines []string
 					lines = append(lines, capturedBootstrap.ReportLines()...)
 					lines = append(lines, capturedRuntime.Snapshot().ReportLines()...)
+					lines = append(lines, capturedControl.Summary().ReportLines()...)
 					return lines
 				})
 				go func() {
@@ -148,7 +155,6 @@ func main() {
 				log.Printf("transitloom-node status endpoint active at http://%s/status", cfg.Observability.Status.Listen)
 			}
 
-			// Stay running until signaled so carriage continues.
 			sigCh := make(chan os.Signal, 1)
 			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 			<-sigCh

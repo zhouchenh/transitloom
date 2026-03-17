@@ -10,7 +10,7 @@ Control-plane session resume and state reconciliation basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 
@@ -285,5 +285,25 @@ When this task is complete, the next likely task should be:
 unless implementation reveals that a smaller prerequisite should be split out first.
 
 The important outcome is that Transitloom now has a bounded, explicit, and observable control-plane reconnect/reconciliation story.
+
+## Implementation summary
+
+- Added `internal/node/session_reconcile.go` with `ControlSessionRuntime` and bounded resume loop (`ControlSessionResumeInterval`, `ControlSessionResumeTimeout`).
+- Implemented explicit reconciliation phases: `disconnected`, `transport-reconnected`, `session-established`, `reconciling`, `reconciled`, `reconciliation-failed`.
+- Implemented bounded post-reconnect steps:
+  - service registration refresh
+  - association refresh
+  - path-candidate refresh plus candidate follow-up refresh execution
+- Added explicit stale-state handling on disconnect:
+  - `CandidateFreshnessStore.MarkStale(...)` for tracked associations
+  - `EndpointRegistry.MarkAllStale(...)` for endpoint freshness
+- Added `ControlReconciliationSummary` + `ReportLines()` in `internal/status`.
+- Wired node runtime status output (`cmd/transitloom-node/main.go`) to include reconciliation state and step outcomes.
+- Added focused tests:
+  - `internal/node/session_reconcile_test.go`
+  - `internal/status/summary_test.go` additions for reconciliation report output
+- Verification completed:
+  - `go test ./...`
+  - `go build ./...`
 
 ---
