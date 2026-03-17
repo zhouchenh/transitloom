@@ -172,7 +172,7 @@ registration path.
 - no live certificate-chain validation during sessions
 - no service discovery implementation
 - no live association lifecycle management or policy evaluation
-- no live path quality measurement (RTT/jitter/loss from real traffic or probes) — scheduler uses static zero-quality candidates from config
+- live path quality measurement basics (T-0019) implemented: PathQualityStore with EWMA RTT/jitter/loss/confidence, freshness-aware staleness, wired into ScheduledEgressRuntime before Scheduler.Decide(); PathQualitySummary in internal/status for observability; probe-result and direct-update entry points present; active probe scheduling loop not yet wired
 - no multi-path carrier load balancing at the socket level
 - no coordinator-distributed path candidates
 
@@ -307,11 +307,12 @@ The completed implementation tasks are:
 - `T-0015 — external endpoint advertisement and DNAT-aware reachability basics`
 - `T-0016 — tlctl runtime inspection and operator workflows basics`
 - `T-0017 — targeted external endpoint probing and freshness revalidation basics`
+- `T-0019 — live path quality measurement basics`
 
 The next practical implementation task is:
 
-- transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback), or
-- path-candidate distribution refinement building on the new external endpoint model.
+- T-0018 — path candidate distribution and consumption basics (still queued), or
+- transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback).
 
 ---
 
@@ -453,9 +454,12 @@ configured ≠ registered/active/verified, bootstrap-ready ≠ coordinator-autho
 external and local ports kept separate, service registration and association state remain
 distinct sections. 12 focused tests added and passing.
 
-The correct next move is to keep the `agents/` workspace accurate and continue
-the staged implementation order. T-0017 is complete; next is transport-security
-maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback) or path-candidate
-distribution refinement building on the now-operational endpoint probing model.
+T-0019 is complete: Transitloom now has a live path-quality measurement baseline.
+`PathQualityStore` (internal/scheduler) accepts probe results and direct updates,
+applies EWMA smoothing for RTT/jitter/loss/confidence, enforces freshness (60s default),
+and enriches PathCandidates before scheduling decisions. The quality layer is separate
+from candidate existence and applied runtime behavior. `PathQualitySummary` in
+internal/status provides operator-visible freshness reporting. The next move is
+T-0018 (path candidate distribution) or transport-security maturation.
 
 ---

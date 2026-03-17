@@ -50,13 +50,37 @@ Transitloom does **not** yet have meaningful implementation of:
 
 ## Active task
 
-No active task. Next task from queue: transport-security maturation
-(QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback), or path-candidate
-distribution refinement.
+No active task. Next task from queue: T-0018 (path candidate distribution
+and consumption basics) or transport-security maturation (QUIC+TLS 1.3 mTLS,
+TCP+TLS 1.3 fallback).
 
 ---
 
 ## Recently completed
+
+### T-0019 — live path quality measurement basics
+**status:** completed
+**task file:** `agents/tasks/T-0019-live-path-quality-measurement-basics.md`
+
+Implemented the first live path-quality measurement baseline.
+`PathQualityStore` in `internal/scheduler`: thread-safe, freshness-aware store
+with EWMA RTT/jitter/loss/confidence accumulation via `RecordProbeResult`,
+direct quality injection via `Update`, explicit staleness via `FreshQuality`
+(returns zero when older than `DefaultQualityMaxAge`=60s), and `ApplyCandidates`
+which enriches PathCandidates before `Scheduler.Decide()`. `MeasuredPathQuality`
+snapshot type for observability.
+`PathQualitySummary` + `MakePathQualitySummary` added to `internal/status`
+for operator-visible quality reporting with stale/fresh labeling.
+`ScheduledEgressRuntime.QualityStore` added to `internal/node`; wired into
+`activateSingleScheduledEgress` before `Decide()`. `QualitySnapshot()` method
+exposes measurement state separately from carrier state. `NewScheduledEgressRuntime`
+now initializes a `PathQualityStore` by default.
+`ReportSchedulerStatus()` updated to reflect live measurement as implemented.
+12 focused tests added in `internal/scheduler/quality_store_test.go`, 5 tests
+in `internal/status/quality_test.go`, 4 integration tests added to
+`internal/node/scheduled_egress_test.go`. 1 benchmark added
+(`BenchmarkApplyCandidates`: ~222 ns/op for 4 candidates).
+`go build ./...` and `go test ./...` both pass.
 
 ### T-0017 — targeted external endpoint probing and freshness revalidation basics
 **status:** completed
@@ -277,6 +301,7 @@ multi-WAN, or encrypted carriage support.
 ## Queued tasks
 
 The next implementation tasks are:
+- T-0018 — path candidate distribution and consumption basics (still queued)
 - transport-security maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback)
 
 ---

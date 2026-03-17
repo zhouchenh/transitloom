@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/zhouchenh/transitloom/internal/config"
 	"github.com/zhouchenh/transitloom/internal/scheduler"
@@ -716,3 +717,111 @@ func TestBuildScheduledActivationInputs_BothEndpoints(t *testing.T) {
 		t.Fatal("expected a relay PathCandidate")
 	}
 }
+
+// --- QualityStore integration tests ---
+
+// TestScheduledEgressRuntime_QualityStore_InitiallyEmpty verifies that a fresh
+// ScheduledEgressRuntime has a non-nil QualityStore with no entries. This
+// ensures measurement is ready to use but does not pre-populate fake quality.
+func TestScheduledEgressRuntime_QualityStore_InitiallyEmpty(t *testing.T) {
+	runtime := NewScheduledEgressRuntime()
+	if runtime.QualityStore == nil {
+		t.Fatal("QualityStore must be non-nil after NewScheduledEgressRuntime")
+	}
+	snaps := runtime.QualityStore.Snapshot()
+	if len(snaps) != 0 {
+		t.Errorf("QualityStore should start empty, got %d entries", len(snaps))
+	}
+}
+
+// TestScheduledEgressRuntime_QualitySnapshot_Empty verifies QualitySnapshot
+// returns an empty summary when no measurements have been recorded.
+func TestScheduledEgressRuntime_QualitySnapshot_Empty(t *testing.T) {
+	runtime := NewScheduledEgressRuntime()
+	summary := runtime.QualitySnapshot()
+	if summary.TotalMeasured != 0 || summary.TotalStale != 0 {
+		t.Errorf("QualitySnapshot should be empty before any measurement, got %+v", summary)
+	}
+}
+
+// TestScheduledEgressRuntime_QualityStoreApplied verifies that when the QualityStore
+// has a fresh measurement, ApplyCandidates enriches the candidates before Decide().
+// This tests the measurement-to-scheduler integration path.
+func TestScheduledEgressRuntime_QualityStoreApplied(t *testing.T) {
+	runtime := NewScheduledEgressRuntime()
+
+	// Record quality for the direct path of "assoc-q1".
+	runtime.QualityStore.Update(
+		"assoc-q1:direct",
+		scheduler.PathQuality{RTT: 10 * time.Millisecond, Confidence: 0.8},
+	)
+
+	// Build candidates: one direct (measured), one relay (unmeasured).
+	candidates := []scheduler.PathCandidate{
+		{
+			ID:            "assoc-q1:direct",
+			AssociationID: "assoc-q1",
+			Class:         scheduler.PathClassDirectPublic,
+			Health:        scheduler.HealthStateActive,
+		},
+		{
+			ID:            "assoc-q1:relay",
+			AssociationID: "assoc-q1",
+			Class:         scheduler.PathClassCoordinatorRelay,
+			Health:        scheduler.HealthStateActive,
+		},
+	}
+
+	// ApplyCandidates should enrich the direct candidate with stored quality.
+	enriched := runtime.QualityStore.ApplyCandidates(candidates)
+
+	directEnriched := enriched[0]
+	if !directEnriched.Quality.Measured() {
+		t.Error("direct candidate should have measured quality after ApplyCandidates")
+	}
+	if directEnriched.Quality.RTT != 10*time.Millisecond {
+		t.Errorf("direct candidate RTT: got %v want 10ms", directEnriched.Quality.RTT)
+	}
+	if directEnriched.Quality.Confidence != 0.8 {
+		t.Errorf("direct candidate Confidence: got %v want 0.8", directEnriched.Quality.Confidence)
+	}
+
+	// Relay candidate has no measurement — should remain unmeasured.
+	relayEnriched := enriched[1]
+	if relayEnriched.Quality.Measured() {
+		t.Error("relay candidate should remain unmeasured (no quality recorded in store)")
+	}
+}
+
+// TestScheduledEgressRuntime_QualityStore_MeasurementDistinctFromCandidate verifies
+// that measurement state is independent of candidate existence and scheduler decisions.
+// Adding quality to the store does not create or modify PathCandidates.
+func TestScheduledEgressRuntime_QualityStore_MeasurementDistinctFromCandidate(t *testing.T) {
+	runtime := NewScheduledEgressRuntime()
+
+	// Record quality for a path that has no corresponding PathCandidate.
+	runtime.QualityStore.Update(
+		"nonexistent-assoc:direct",
+		scheduler.PathQuality{RTT: 20 * time.Millisecond, Confidence: 0.5},
+	)
+
+	// The store knows about the quality, but this does not create a candidate.
+	snaps := runtime.QualityStore.Snapshot()
+	if len(snaps) != 1 {
+		t.Fatalf("expected 1 snapshot entry, got %d", len(snaps))
+	}
+
+	// Decide with no candidates: ModeNoEligiblePath regardless of quality store contents.
+	decision := runtime.Scheduler.Decide("nonexistent-assoc", nil)
+	if decision.Mode != scheduler.ModeNoEligiblePath {
+		t.Errorf("Decide with nil candidates should return ModeNoEligiblePath, got %s", decision.Mode)
+	}
+
+	// Measurement state in the store is NOT the same as candidate existence.
+	// An operator can inspect both separately.
+	qualSummary := runtime.QualitySnapshot()
+	if qualSummary.TotalMeasured != 1 {
+		t.Errorf("QualitySnapshot should show 1 measured entry, got %d", qualSummary.TotalMeasured)
+	}
+}
+

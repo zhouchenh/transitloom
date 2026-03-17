@@ -23,13 +23,19 @@ import (
 // Direct and relay-assisted runtimes remain architecturally distinct: the
 // scheduler chooses between them but does not blend them into one carrier.
 //
+// QualityStore: when non-nil, the quality store enriches PathCandidates with
+// fresh measured quality before Scheduler.Decide() is called. This is the live
+// measurement input layer. The store is optional — without it the scheduler
+// operates on unmeasured (confidence=0) candidates, which is the prior behavior.
+//
 // The mu/lastActivations fields enable Snapshot() to return the applied carrier
 // state after activation. lastActivations records what the scheduler decided
 // and which carrier was actually started for each association.
 type ScheduledEgressRuntime struct {
-	Scheduler *scheduler.Scheduler
-	Direct    *DirectPathRuntime
-	Relay     *RelayPathRuntime
+	Scheduler    *scheduler.Scheduler
+	Direct       *DirectPathRuntime
+	Relay        *RelayPathRuntime
+	QualityStore *scheduler.PathQualityStore // optional; nil means no live measurement
 
 	// mu protects lastActivations from concurrent reads and writes.
 	mu sync.RWMutex
@@ -40,12 +46,19 @@ type ScheduledEgressRuntime struct {
 
 // NewScheduledEgressRuntime creates a ScheduledEgressRuntime with a new
 // scheduler (using default stripe thresholds), a new direct-path runtime,
-// and a new relay-path runtime.
+// a new relay-path runtime, and a new PathQualityStore (using the default
+// freshness window).
+//
+// The QualityStore starts empty — no measurements recorded. Callers populate it
+// via QualityStore.RecordProbeResult or QualityStore.Update as probe or observation
+// results become available. Until measurements are present, the scheduler operates
+// on unmeasured (confidence=0) candidates, which is conservative and correct.
 func NewScheduledEgressRuntime() *ScheduledEgressRuntime {
 	return &ScheduledEgressRuntime{
-		Scheduler: scheduler.NewScheduler(scheduler.DefaultStripeMatchThresholds()),
-		Direct:    NewDirectPathRuntime(),
-		Relay:     NewRelayPathRuntime(),
+		Scheduler:    scheduler.NewScheduler(scheduler.DefaultStripeMatchThresholds()),
+		Direct:       NewDirectPathRuntime(),
+		Relay:        NewRelayPathRuntime(),
+		QualityStore: scheduler.NewPathQualityStore(scheduler.DefaultQualityMaxAge),
 	}
 }
 
@@ -411,6 +424,23 @@ func (r *ScheduledEgressRuntime) Snapshot() status.ScheduledEgressSummary {
 	}
 }
 
+// QualitySnapshot returns a point-in-time view of all measured path quality
+// stored in the QualityStore. This surface makes the live measurement layer
+// directly inspectable: operators can see which paths have been measured, what
+// the current RTT/loss/confidence estimates are, and which entries are stale.
+//
+// Returns nil when QualityStore is nil (live measurement not configured).
+//
+// This is intentionally a separate method from Snapshot(): carrier state and
+// measurement state are different concerns and must not be conflated.
+// Snapshot() shows applied runtime behavior; QualitySnapshot() shows measurement inputs.
+func (r *ScheduledEgressRuntime) QualitySnapshot() status.PathQualitySummary {
+	if r.QualityStore == nil {
+		return status.PathQualitySummary{}
+	}
+	return status.MakePathQualitySummary(r.QualityStore.Snapshot())
+}
+
 // activateSingleScheduledEgress handles one association's scheduler-guided
 // activation. The scheduler runs here, at the source endpoint, before any
 // carrier is started.
@@ -428,11 +458,25 @@ func activateSingleScheduledEgress(
 		CarrierActivated: "none",
 	}
 
+	// Enrich PathCandidates with fresh measured quality before scheduling.
+	// When the QualityStore has fresh measurements for a candidate, the scheduler
+	// receives real RTT/jitter/loss/confidence data instead of zero-value
+	// (unmeasured) quality. This is the live path-quality measurement integration
+	// point: measurement inputs are applied here, at the scheduling decision boundary.
+	//
+	// If QualityStore is nil (or has no fresh measurement for a candidate), the
+	// candidate's Quality stays zero — the scheduler handles unmeasured candidates
+	// conservatively (eligible for carriage, but cannot activate per-packet striping).
+	candidates := input.PathCandidates
+	if runtime.QualityStore != nil {
+		candidates = runtime.QualityStore.ApplyCandidates(candidates)
+	}
+
 	// Egress decision point: the scheduler runs here, at the source endpoint.
 	// This is the primary integration between scheduler decisions and carrier
 	// activation. Endpoint-owned: only source endpoints call Decide(); relays
 	// must not call Decide() for end-to-end path selection.
-	decision := runtime.Scheduler.Decide(input.AssociationID, input.PathCandidates)
+	decision := runtime.Scheduler.Decide(input.AssociationID, candidates)
 	activation.Decision = decision
 
 	// No eligible path: skip carrier activation. The reason is in Decision.Reason.

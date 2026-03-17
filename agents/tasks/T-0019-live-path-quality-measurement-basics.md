@@ -10,7 +10,7 @@ Live path quality measurement basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 

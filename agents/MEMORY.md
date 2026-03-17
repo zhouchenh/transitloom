@@ -212,6 +212,24 @@ These decisions are settled unless deliberately changed through specs.
 
 ---
 
+## Durable live path quality measurement decisions
+
+These decisions are settled unless deliberately changed through specs.
+
+- `PathQualityStore` in `internal/scheduler` is the live measurement input layer; it is NOT scheduling, NOT candidate existence, NOT applied runtime behavior
+- `PathQualityStore.RecordProbeResult` uses EWMA for RTT (alpha=0.125), jitter (alpha=0.25 deviation), and loss fraction (alpha=0.1); confidence increases by 0.1 per successful probe, decreases by 0.2 per failure, clamped to [0,1]
+- `PathQualityStore.Update` replaces stored quality directly (no EWMA blending); for use with passive observation or external measurement sources
+- `PathQualityStore.FreshQuality` returns (zero, false) when the measurement is older than `maxAge`; this is the explicit staleness contract — stale measurements must not silently appear as current
+- `DefaultQualityMaxAge` = 60s; measurements older than this are treated as stale by the scheduler
+- `PathQualityStore.ApplyCandidates` returns a new slice with Quality fields enriched from fresh measurements; only Quality is updated, not ID/Class/Health/AssociationID
+- `ScheduledEgressRuntime.QualityStore` is set to a new `PathQualityStore` by default in `NewScheduledEgressRuntime`; applied in `activateSingleScheduledEgress` before `Scheduler.Decide()`
+- `ScheduledEgressRuntime.QualitySnapshot()` returns `PathQualitySummary` (from `internal/status`); this is a separate method from `Snapshot()` because measurement inputs and applied carrier behavior are different concerns
+- `PathQualitySummary` + `MakePathQualitySummary` in `internal/status` provides operator-visible freshness reporting; stale entries labeled `[stale/needs-remeasurement]`
+- Active probe scheduling loop (calling `RecordProbeResult` on a timer) is NOT yet implemented; the store accepts probe results but callers must drive the probe lifecycle
+- Measurement state (PathQualityStore) is intentionally NOT the same as `EndpointRegistry` (T-0017); EndpointRegistry tracks address/port reachability for external endpoints; PathQualityStore tracks per-path scheduler quality inputs for association-bound candidates
+
+---
+
 ## Durable WireGuard-over-mesh decisions
 
 - WireGuard is the flagship documented v1 use case

@@ -88,10 +88,10 @@ func ReportSchedulerStatus() SchedulerCarriageStatus {
 			"decision reasoning: every SchedulerDecision.Reason is non-empty and human-readable",
 			"SchedulerStatus snapshot: thresholds and counters readable at any time",
 			"scheduler-to-carrier integration: Decide() results wired into ScheduledEgressRuntime; governs DirectCarrier vs RelayEgressCarrier activation per association",
+			"live path quality measurement basics: PathQualityStore (EWMA RTT/jitter/loss, confidence, freshness-aware staleness); RecordProbeResult for probe-driven updates; Update for direct quality injection; ApplyCandidates wired into ScheduledEgressRuntime before Decide(); QualitySnapshot for operator observability; MeasuredPathQuality distinct from PathCandidate existence",
 		},
 		NotImplemented: []string{
-			"live path quality measurement (RTT/jitter/loss inputs from real traffic or probes)",
-			"active probing integration (lightweight liveness/latency probe triggers)",
+			"active probing integration (PathQualityStore accepts probe results; probe scheduling loop not yet wired into runtime)",
 			"hysteresis for path switching (preventing oscillation on noisy quality measurements)",
 			"multi-path carrier load balancing (per-packet delivery split not yet implemented at carrier level)",
 			"node relay scheduling (only coordinator relay defined in PathClass; node relay not yet active)",
