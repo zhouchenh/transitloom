@@ -189,6 +189,29 @@ These decisions are settled unless deliberately changed through specs.
 - `NewConfiguredEndpoint()` is the canonical constructor for operator-configured external endpoints; it sets source=configured, verification=unverified
 - Coordinator observation of a source address (public IP) is insufficient to infer usable inbound ports; the coordinator cannot observe DNAT rules on the router
 
+## Durable targeted probing and freshness revalidation decisions
+
+These decisions are settled unless deliberately changed through specs.
+
+- The Transitloom probe wire protocol is 13 bytes: 4-byte magic "TLPR" + 1 type byte + 8-byte nonce (little-endian). `ProbeTypeRequest = 0x01`, `ProbeTypeResponse = 0x02`. The responder echoes the nonce with ProbeTypeResponse.
+- `IsProbeDatagram()` in `internal/transport` is the canonical way to identify probe datagrams for multiplexed listeners.
+- `CandidateReason` has four values: configured, router-discovered, coordinator-observed, previously-verified. Every `ProbeCandidate` must carry a reason to enforce targeted-first discipline.
+- `BuildCandidatesFromEndpoints()` must never return more candidates than the input endpoint count; it never invents new host:port combinations. This is the structural guard against blind port scanning.
+- `BuildCoordinatorObservedCandidates()` takes a coordinator-observed IP + explicitly configured port list. It must never be called with a speculative port range.
+- `UDPProbeExecutor` is the operational probe executor; it uses crypto/rand nonces, a connected UDP socket, and respects context deadlines.
+- `ProbeResponder` and `HandleProbeDatagram()` are for the remote side; existing mesh listeners should integrate `HandleProbeDatagram()` rather than running a separate responder socket.
+- `EndpointRegistry` in `internal/transport` is the thread-safe runtime store for ExternalEndpoints; it is the authoritative source for usable/stale/failed endpoint knowledge during node runtime.
+- `EndpointRegistry.MarkAllStale()` is the correct way to bulk-invalidate endpoint knowledge after path-down/IP-change events; it leaves already-stale/failed endpoints unchanged.
+- `EndpointRegistry.SelectForRevalidation()` returns stale+failed endpoints; `SelectForInitialVerification()` returns unverified endpoints. These are the two targeted candidate selection points.
+- `EndpointRegistry.ApplyProbeResult()` updates all matching host:port endpoints; multiple source records for the same address are all updated.
+- `CoordinatorProbeRequest` in `internal/controlplane` preserves the DNAT distinction: `TargetPort` (external, on router) and `EffectiveLocalPort` (local mesh listener after DNAT) must never be collapsed.
+- `EndpointFreshnessSummary` in `internal/status` is the operator-facing freshness surface; it imports `internal/transport` (leaf package, no cycle risk).
+- `ReportLines()` on `EndpointFreshnessSummary` labels stale/failed endpoints as `[needs-revalidation]` explicitly so operators know which endpoints cannot be used for direct-path decisions.
+- Blind full-range probing (0–65535) is explicitly not implemented and must not become the default. All probe candidates must trace to a known deliberate source.
+- Full UPnP/PCP/NAT-PMP and STUN/TURN/ICE are explicitly out of scope for T-0017 and remain future work.
+
+---
+
 ## Durable WireGuard-over-mesh decisions
 
 - WireGuard is the flagship documented v1 use case

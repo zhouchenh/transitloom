@@ -192,6 +192,8 @@ tlctl runtime inspection and operator workflows basics (T-0016) are now implemen
 
 External endpoint advertisement and DNAT-aware reachability basics (T-0015) are now implemented. `internal/transport/endpoint.go` defines `ExternalEndpoint`, `EndpointSource` (configured/router-discovered/probe-discovered/coordinator-observed), `VerificationState` (unverified/verified/stale/failed), `RouterDiscoveryHint`, `ProbeResult`, `NewConfiguredEndpoint`, `ValidateAddrPort`, and MarkStale/MarkVerified/MarkFailed state transitions. `internal/config/common.go` now carries `ExternalEndpointConfig` (with `PublicHost` and `ForwardedPorts`) and `ForwardedPortConfig` (with separate `ExternalPort` and `LocalPort` to preserve DNAT-awareness). `NodeConfig` now carries `ExternalEndpoint ExternalEndpointConfig` and validates it. The model explicitly separates local target, local ingress, mesh/runtime port, and external advertised endpoint. Narrow placeholder types for future UPnP/PCP/NAT-PMP discovery and targeted probing are defined. 11 focused test functions covering all modeling behavior pass.
 
+Targeted external endpoint probing and freshness revalidation basics (T-0017) are now implemented. `internal/transport/probe.go` defines the 13-byte TLPR probe wire protocol (magic+type+nonce), `CandidateReason` (configured/router-discovered/coordinator-observed/previously-verified), `ProbeCandidate` with `Validate()`, `BuildCandidatesFromEndpoints()` (targeted only — no blind port scanning), `BuildCoordinatorObservedCandidates()`, `ProbeExecutor` interface, and `UDPProbeExecutor` (actual UDP challenge/response with crypto/rand nonce and context deadline). `internal/transport/responder.go` adds `ProbeResponder` (standalone UDP listener that echoes probe nonces) and `HandleProbeDatagram()` (for integrating probe handling into existing listeners). `internal/transport/registry.go` adds `EndpointRegistry` (thread-safe collection with Add, MarkAllStale, SelectForRevalidation, SelectForInitialVerification, UsableEndpoints, Snapshot, ApplyProbeResult) and `RevalidationTrigger` constants. `internal/controlplane/probe_assist.go` adds `CoordinatorProbeRequest` / `CoordinatorProbeResponse` / `ValidateCoordinatorProbeRequest` for the coordinator-assisted probing model. `internal/status/endpoint.go` adds `EndpointFreshnessSummary`, `MakeEndpointFreshnessSummary()`, and `ReportLines()` for operator-visible freshness reporting. 35 focused tests added across transport, controlplane, and status packages.
+
 ---
 
 ## Current v1 architectural boundaries
@@ -304,6 +306,7 @@ The completed implementation tasks are:
 - `T-0014 — scheduler-to-carrier integration`
 - `T-0015 — external endpoint advertisement and DNAT-aware reachability basics`
 - `T-0016 — tlctl runtime inspection and operator workflows basics`
+- `T-0017 — targeted external endpoint probing and freshness revalidation basics`
 
 The next practical implementation task is:
 
@@ -451,8 +454,8 @@ external and local ports kept separate, service registration and association sta
 distinct sections. 12 focused tests added and passing.
 
 The correct next move is to keep the `agents/` workspace accurate and continue
-the staged implementation order. T-0016 is complete; next is transport-security
+the staged implementation order. T-0017 is complete; next is transport-security
 maturation (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback) or path-candidate
-distribution refinement building on the new external endpoint model.
+distribution refinement building on the now-operational endpoint probing model.
 
 ---

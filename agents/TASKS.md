@@ -52,11 +52,30 @@ Transitloom does **not** yet have meaningful implementation of:
 
 No active task. Next task from queue: transport-security maturation
 (QUIC+TLS 1.3 mTLS, TCP+TLS 1.3 fallback), or path-candidate
-distribution refinement building on the new external endpoint model.
+distribution refinement.
 
 ---
 
 ## Recently completed
+
+### T-0017 — targeted external endpoint probing and freshness revalidation basics
+**status:** completed
+**task file:** `agents/tasks/T-0017-targeted-external-endpoint-probing-and-freshness-revalidation-basics.md`
+
+Implemented targeted external endpoint probing and freshness revalidation in
+`internal/transport`. Added a probe wire protocol (13-byte magic+type+nonce
+datagram), `ProbeCandidate` with `CandidateReason` enforcing targeted-first
+discipline, `UDPProbeExecutor` for actual UDP challenge/response probing,
+`ProbeResponder` / `HandleProbeDatagram` for integration into listeners,
+`EndpointRegistry` for thread-safe endpoint collection with staleness/revalidation
+management, `RevalidationTrigger` types. Added `CoordinatorProbeRequest` /
+`CoordinatorProbeResponse` in `internal/controlplane` for coordinator-assisted
+probing model. Added `EndpointFreshnessSummary` + `ReportLines()` in
+`internal/status`. Added 35 focused tests covering: probe protocol, candidate
+building (targeted, no broad scan), registry lifecycle, stale/revalidate cycle,
+end-to-end UDP probe with local ProbeResponder, coordinator probe validation,
+endpoint freshness summary construction and reporting.
+`go build ./...` and `go test ./...` both pass.
 
 ### T-0016 — tlctl runtime inspection and operator workflows basics
 **status:** completed

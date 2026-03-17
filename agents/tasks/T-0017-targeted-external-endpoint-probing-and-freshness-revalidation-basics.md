@@ -10,7 +10,7 @@ Targeted external endpoint probing and freshness revalidation basics
 
 ## Status
 
-Queued
+Completed
 
 ## Purpose
 
