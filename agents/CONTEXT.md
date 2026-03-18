@@ -160,18 +160,22 @@ registration path.
 - `transitloom-node` now attempts bootstrap-only service registration after bootstrap control-session success and exits clearly on full success vs partial or failed registration
 - focused service-registration tests now cover request mapping, coordinator-side stored registry state, partial rejection of invalid service declarations, and node-side registration attempts
 
-### What is not done yet
+### What is not done yet (updated per T-0031 audit)
 - no real object model implementation in Go
-- no node enrollment flow
+- no node enrollment flow (certificate issuance not yet implemented)
 - no live admission-token issuance or refresh logic
 - no coordinator-side admission-token validation logic
-- no final QUIC + TLS 1.3 mTLS control transport implementation (QUIC wrapper around existing TLS material is future work)
+- no final QUIC + TLS 1.3 mTLS control transport (QUIC wrapper around existing TLS material is future work)
 - no live certificate-chain validation during sessions (application-layer admission-token enforcement not yet implemented)
 - no service discovery implementation
 - no live association lifecycle management or policy evaluation
-- live path quality measurement basics (T-0019) implemented: PathQualityStore with EWMA RTT/jitter/loss/confidence, freshness-aware staleness, wired into ScheduledEgressRuntime before Scheduler.Decide(); PathQualitySummary in internal/status for observability; probe-result and direct-update entry points present; active probe scheduling loop now wired via T-0029 (RunProbeLoop, ExecuteProbeRound) and live runtime lifecycle integration/status visibility added in T-0030
+- EffectivePolicy not yet consumed by runtime: `FallbackConfig`, `MultiWANStickinessConfig`, and `ProbeSchedulerConfig` use hardcoded defaults; `activateSingleScheduledEgress` does not call `ResolvePolicy()` per association despite `cfg config.NodeConfig` being available
+- SecureControlListener (TCP+TLS 1.3 mTLS) implemented and tested but not started in `transitloom-coordinator/main.go`; coordinator still uses BootstrapListener only
+- control sessions remain bootstrap-only HTTP in runtime; `ControlSessionRuntime` sets `SessionAuthenticated=false` via `BootstrapOnlyTransportStatus()` explicitly
+- per-packet striping not implemented at the carrier level (Scheduler can decide ModePerPacketStripe, but multi-carrier striping at the socket level is deferred)
 - no multi-path carrier load balancing at the socket level
-- coordinator-distributed path candidates (distribution/consumption T-0018 done; refinement layer T-0020 done; candidate refresh/revalidation automation T-0022 done — `CandidateFreshnessStore` + `SelectCandidateRefreshTargets` + `ExecuteCandidateRefresh` provide bounded coordinator re-fetch when candidates go stale; active probe scheduling loop now wired via T-0029 — `RunProbeLoop` drives `SelectProbeTargets` + `ExecuteProbeRound` on a ticker; T-0030 integrates loop start/stop with node runtime context and exposes probe-loop state/last-round status in node runtime summaries)
+- live path quality measurement is implemented (T-0019): PathQualityStore with EWMA RTT/jitter/loss/confidence, freshness-aware staleness, wired into ScheduledEgressRuntime before Scheduler.Decide(); PathQualitySummary in internal/status for observability; probe-result and direct-update entry points present; active probe scheduling loop wired via T-0029 (RunProbeLoop, ExecuteProbeRound) and live runtime lifecycle integration added in T-0030
+- coordinator-distributed path candidates are implemented end-to-end (T-0018 through T-0022, T-0027, T-0030): distribution/consumption, refinement, candidate refresh/revalidation, reconciliation loop, and live probe loop all wired
 
 The first WireGuard-over-mesh direct-path validation now works end-to-end. Direct raw UDP carriage is wired into the node startup flow via `DirectPathRuntime`. Standard WireGuard can use Transitloom local ingress ports as peer endpoints on a direct path with zero in-band overhead.
 
@@ -348,6 +352,7 @@ The completed implementation tasks are:
 - `T-0024 — multi-WAN policy and hysteresis basics`
 - `T-0025 — operator path diagnostics and explainability basics`
 - `T-0026 — path change event history and audit basics`
+- `T-0027 — control-plane session resume and state reconciliation basics`
 - `T-0028 — config profile and policy bundling basics`
 - `T-0029 — active probe scheduling and path usability signal wiring basics`
 - `T-0030 — live node probe-loop lifecycle integration basics`
@@ -579,7 +584,14 @@ outcomes in node status output, keeping transport/session state distinct from lo
 reconciliation state. Focused tests were added in `internal/node/session_reconcile_test.go`
 and `internal/status/summary_test.go`.
 
-The correct next move is to continue the staged implementation order. Remaining priorities:
+The correct next move is to continue the staged implementation order. Remaining priorities
+(updated per T-0031 integration audit):
+- **Wire EffectivePolicy into runtime** — this is the highest-priority gap: `FallbackConfig`,
+  `MultiWANStickinessConfig`, and `ProbeSchedulerConfig` use hardcoded defaults instead of
+  per-association `EffectivePolicy` values resolved by T-0028. `ActivateScheduledEgress`
+  receives `cfg config.NodeConfig` but does not call `ResolvePolicy()` per association.
+- **Start SecureControlListener in coordinator runtime** — implemented and tested but not wired
+  into `transitloom-coordinator/main.go`; the coordinator still runs `BootstrapListener` only.
 - node enrollment flow (certificate issuance)
 - application-layer admission-token enforcement on the secure control transport
 - QUIC+TLS 1.3 mTLS primary transport (QUIC wrapper around existing PKI material)

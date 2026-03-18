@@ -489,6 +489,49 @@ This is part of the project’s durable philosophy and should guide implementati
 
 ---
 
+## Critical integration gap: EffectivePolicy not consumed at runtime (T-0031 audit finding)
+
+**Status at T-0031 audit:** `EffectivePolicy` is fully resolved and displayed in `tlctl node config`
+but is NOT consumed by any runtime logic.
+
+The gap:
+- `config.ResolvePolicy()` is called only in `cmd/tlctl/main.go` (line 426) for display
+- Runtime components use hardcoded defaults:
+  - `DefaultFallbackConfig()` → `MinRelayDwell=30s, RecoveryConfirmWindow=15s`
+  - `DefaultMultiWANStickinessConfig()` → `StickinessThreshold=3, HoldDownDuration=30s`
+  - `DefaultProbeSchedulerConfig()` → `ProbeInterval=30s, MaxTargetsPerRound=10`
+- `activateSingleScheduledEgress()` receives `cfg config.NodeConfig` but does NOT call `ResolvePolicy()`
+  per association to configure the FallbackStore or StickinessStore
+- `EffectivePolicy` fields `FallbackDirectToRelayTimeoutMs`, `FallbackRelayToDirectRecoveryMs`,
+  `MultiWANHysteresisDelayMs`, `ProbingIntervalMs`, `ProbingTimeoutMs`, `ObservabilityExplainabilityLevel`
+  are all configured-but-unconsumed at runtime
+
+**What must happen to close this gap:**
+`BuildScheduledActivationInputs` or `activateSingleScheduledEgress` must resolve `EffectivePolicy`
+per association and use it to configure the per-association `FallbackConfig`, `MultiWANStickinessConfig`,
+and `ProbeSchedulerConfig` used at runtime. Until this is done, profile and policy_overrides in config
+have no effect on actual runtime behavior.
+
+---
+
+## Critical integration gap: SecureControlListener not started in coordinator runtime (T-0031 audit finding)
+
+**Status at T-0031 audit:** `coordinator.SecureControlListener` (TCP+TLS 1.3 mTLS) is fully
+implemented and tested (including mTLS enforcement, correct transport status reporting, and
+bootstrap session exchange over TLS). However, it is **not started** in
+`cmd/transitloom-coordinator/main.go`.
+
+The coordinator main.go still calls `coordinator.NewBootstrapListener()` only, meaning:
+- All coordinator control sessions use plain HTTP with no transport-layer identity verification
+- `ControlSessionRuntime` in the node explicitly sets `SessionAuthenticated=false` (via `BootstrapOnlyTransportStatus()`)
+- The secure transport is test-only infrastructure until the coordinator binary is updated to start it
+
+**What must happen to close this gap:**
+Update `cmd/transitloom-coordinator/main.go` to optionally (or exclusively) start `SecureControlListener`
+when TLS material is available, alongside or replacing `BootstrapListener`.
+
+---
+
 ## What to add here later
 
 Add to this file when a decision becomes durable enough that future agents should not have to rediscover or renegotiate it.

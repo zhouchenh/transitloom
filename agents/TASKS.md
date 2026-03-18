@@ -50,9 +50,67 @@ Transitloom does **not** yet have meaningful implementation of:
 
 ## Active task
 
-None. T-0030 has been completed. See queued tasks below for the next work.
+None. T-0031 has been completed. See queued tasks below for the next work.
 
 ## Recently completed
+
+### T-0031 — project integration consolidation audit
+**status:** completed
+**task file:** `agents/tasks/T-0031-project-integration-consolidation-audit.md`
+
+Performed a focused post-integration audit across all T-0002 through T-0030 deliverables.
+Inspected runtime, control, config, and status surfaces from actual code. Key findings:
+
+1. **EffectivePolicy gap (highest-priority):** `config.EffectivePolicy` from T-0028 is resolved in
+   `tlctl node config` for display only. Runtime components (`FallbackConfig`, `MultiWANStickinessConfig`,
+   `ProbeSchedulerConfig`) all use hardcoded defaults. `activateSingleScheduledEgress` does not call
+   `ResolvePolicy()` per association. Profile/policy_overrides have no effect on runtime behavior.
+
+2. **SecureControlListener not started:** `coordinator.SecureControlListener` (TCP+TLS 1.3 mTLS) is
+   fully implemented and tested but is not started in `transitloom-coordinator/main.go`. All control
+   sessions remain bootstrap-only HTTP at runtime. `ControlSessionRuntime` explicitly labels them
+   `SessionAuthenticated=false` via `BootstrapOnlyTransportStatus()`.
+
+3. **All other live features confirmed:** scheduler-to-carrier integration, fallback/recovery,
+   stickiness/hysteresis, candidate refinement, probe loop, control session reconciliation, event
+   history, status server, tlctl inspection — all wired and running in `main.go`.
+
+4. **Per-packet striping gap is observable but correct:** Scheduler decides ModePerPacketStripe,
+   but multi-carrier striping at the socket level is deferred. The gap is logged in ScheduledEgressSummary.
+
+5. **Signal layering is clean:** EndpointRegistry, PathQualityStore, CandidateFreshnessStore,
+   FallbackState, StickinessState, and chosen runtime path are all distinct and non-overlapping.
+
+6. **Status/reporting is honest:** bootstrap-ready ≠ authorized, configured ≠ active, bootstrap-only
+   transport is always labeled as such. One gap: TASKS.md was missing T-0027 and T-0028 — corrected.
+
+Updated: `agents/TASKS.md`, `agents/CONTEXT.md`, `agents/MEMORY.md`, `agents/tasks/T-0031-*.md`.
+`go build ./...` and `go test ./...` pass.
+
+### T-0028 — config profile and policy bundling basics
+**status:** completed
+**task file:** `agents/tasks/T-0028-config-profile-and-policy-bundling-basics.md`
+
+Introduced `ProfileConfig`, `PolicyBundle`, and `EffectivePolicy` in `internal/config/profile.go`.
+`ResolvePolicy()` layers system defaults, profile settings, and inline overrides.
+`tlctl node config` outputs fully resolved effective policy per association.
+Tests added for resolution and override logic. **Note (T-0031 audit finding):** `EffectivePolicy`
+is currently consumed only in `tlctl node config` display — runtime components still use
+hardcoded defaults (`DefaultFallbackConfig`, `DefaultMultiWANStickinessConfig`,
+`DefaultProbeSchedulerConfig`). Wiring EffectivePolicy into runtime is a high-priority follow-up.
+
+### T-0027 — control-plane session resume and state reconciliation basics
+**status:** completed
+**task file:** `agents/tasks/T-0027-control-plane-session-resume-and-state-reconciliation-basics.md`
+
+Added `ControlSessionRuntime` in `internal/node/session_reconcile.go` with bounded reconnect
+loop (`ControlSessionResumeInterval=10s`), explicit phases (disconnected, transport-reconnected,
+session-established, reconciling, reconciled, reconciliation-failed), and per-step outcomes
+(service-refresh, association-refresh, path-candidate-refresh). Disconnect handling marks
+coordinator-derived candidate freshness stale and marks endpoint registry stale. Status surface
+in `internal/status` exposes `ControlReconciliationSummary`. Wired into `transitloom-node/main.go`
+as a background goroutine. **Note:** runtime uses bootstrap-only HTTP transport; `SessionAuthenticated`
+will be false until secure transport is active.
 
 ### T-0030 — live node probe-loop lifecycle integration basics
 **status:** completed
@@ -489,11 +547,12 @@ multi-WAN, or encrypted carriage support.
 
 ## Queued tasks
 
-The next implementation tasks are:
-- [x] **T-0028**: config profile and policy bundling basics
-- node enrollment flow (certificate issuance)
-- application-layer admission-token enforcement on the secure control transport
-- QUIC+TLS 1.3 mTLS primary transport (QUIC wrapper around existing PKI material)
+The next implementation tasks (from T-0031 audit findings, in priority order):
+1. **Wire EffectivePolicy into runtime** — `FallbackConfig`, `MultiWANStickinessConfig`, and `ProbeSchedulerConfig` must read from `EffectivePolicy` (resolved per association) instead of hardcoded defaults. This is the biggest gap between T-0028's resolved-but-unconsumed policy fields and the live runtime.
+2. **Start SecureControlListener in coordinator runtime** — `SecureControlListener` (TCP+TLS 1.3 mTLS) is fully implemented and tested but is not started in `transitloom-coordinator/main.go`. The coordinator still runs BootstrapListener only.
+3. **Node enrollment flow** — certificate issuance; required before application-layer admission-token enforcement can be meaningful.
+4. **Application-layer admission-token enforcement** on the secure control transport.
+5. **QUIC+TLS 1.3 mTLS primary transport** (QUIC wrapper around existing PKI material).
 
 ---
 
