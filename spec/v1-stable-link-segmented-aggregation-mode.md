@@ -6,18 +6,19 @@ Draft
 
 ## Purpose
 
-Define a new optional Transitloom dataplane mode for **stable multi-WAN bandwidth aggregation**.
+Define an optional advanced Transitloom dataplane mode for **true multi-WAN bandwidth aggregation across measured-stable WAN sets**.
 
-This mode is distinct from Transitloom’s existing whole-packet path selection model.
+This mode is distinct from Transitloom’s existing conservative whole-packet mode.
 
-Its goal is to allow a single original payload packet to be carried as multiple Transitloom transport segments across multiple stable WAN paths, then reassembled into the original payload packet at the receiver.
+Its purpose is to allow a single original payload packet to be carried as multiple Transitloom transport segments across multiple eligible WAN paths, then reassembled into the original payload packet at the receiver.
 
 This mode is intended for environments where:
 
 - multiple WAN paths are available
 - those paths are sufficiently stable
 - the operator explicitly opts in
-- the additional complexity and overhead are acceptable in exchange for stronger bandwidth aggregation
+- the additional transport overhead and receiver complexity are acceptable
+- stronger bandwidth aggregation is worth the trade-offs
 
 This mode is **not** intended to replace the existing conservative whole-packet mode.
 
@@ -33,23 +34,23 @@ Transitloom’s existing whole-packet mode is well suited for:
 - simpler failure handling
 - preserving whole-packet carriage behavior
 
-But whole-packet path selection has an inherent limit:
+But whole-packet path selection has a structural limitation:
 
-- one original packet is sent on one chosen path at a time
+- one original packet is sent on one selected path at a time
 
 That works well for robustness, but it limits true aggregation across multiple stable WANs.
 
 This mode exists to support a different operating point:
 
 - use multiple WANs simultaneously for one original packet
-- exploit stable WAN sets for stronger aggregate throughput
-- accept transport-level segmentation, reassembly, and observability complexity as the price
+- exploit measured-stable WAN sets for stronger aggregate throughput
+- accept transport-level segmentation, reassembly, timeout, pressure, and observability complexity as the cost
 
 ---
 
 ## Relationship to existing mode
 
-Transitloom should support at least two distinct dataplane modes:
+Transitloom should support at least two distinct dataplane modes.
 
 ### Mode A — conservative whole-packet mode
 
@@ -86,7 +87,8 @@ This mode does **not** aim to provide:
 - guaranteed delivery or reliability
 - TCP-like retransmission behavior in v1
 - a replacement for all existing scheduler/fallback/hysteresis logic
-- a full FEC framework in the first minimal implementation
+- a complete FEC implementation in the first minimal phase
+- a broad measurement platform or worker framework
 
 ---
 
@@ -111,30 +113,42 @@ Especially important:
 
 ---
 
-## Applicability and eligibility
+## Activation model
 
-This mode should only be used when all of the following are true:
+This mode should activate only when all of the following are true:
 
 1. the operator has explicitly enabled it
-2. the path set is measured stable enough
-3. the selected WAN set is eligible for stable-link segmented aggregation
-4. the original packet is large enough to justify segmentation
-5. the packet is not classified as a control/small packet that should remain whole
+2. the selected WAN/path set is measured stable enough
+3. the service or association policy allows it
+4. the packet is eligible for segmentation
+5. the system has not exited the mode due to sustained degradation
 
 ### Operator enablement
 
-The preferred activation model is:
+The preferred enablement model is:
 
 - Transitloom may recommend this mode based on measured path stability
 - the operator must still explicitly opt in
-- the mode may be configured per-service or per-association
-- association-specific settings may override service-level settings
+- the mode may be configured per-service
+- association-specific settings may override service-level defaults
 
-### Stable-path eligibility
+### Config precedence
 
-A WAN set is eligible only when path variation is sufficiently bounded.
+For this mode, config precedence should be:
 
-The precise measured thresholds may evolve, but the model should consider at least:
+1. system defaults
+2. service-level mode and policy settings
+3. association-level override
+
+That keeps reusable defaults while preserving precise per-association control.
+
+---
+
+## Stable-path eligibility
+
+A WAN/path set is eligible only when path variation is sufficiently bounded.
+
+The exact measured thresholds may evolve, but eligibility should consider at least:
 
 - RTT spread
 - jitter spread
@@ -143,6 +157,18 @@ The precise measured thresholds may evolve, but the model should consider at lea
 - enough evidence to avoid weak conclusions from sparse data
 
 If the path set is not stable enough, this mode should not activate.
+
+### Exit rule
+
+If stability degrades after the mode is active, Transitloom should not leave the mode immediately.
+
+Instead:
+
+- detect degraded stability
+- apply bounded degradation dwell / confirmation
+- then revert to conservative whole-packet mode if stability remains insufficient
+
+This keeps exit behavior sane and avoids thrashing.
 
 ---
 
@@ -155,39 +181,50 @@ This mode is packet-based, not stream-based.
 ### Eligible packets
 
 A packet may be segmented only if:
+
 - the mode is enabled
 - the selected path set is eligible
 - the packet is above a configured segmentation threshold
 - the packet is not in a class that should remain whole
 
-### Non-segmented packets
+### Segmentation threshold
 
-Some packets should remain whole even when the mode is enabled.
+The initial threshold model should be:
 
-At minimum, the mode should support keeping these whole:
-- small packets
-- control-sensitive packets
-- other operator-selected traffic classes
+- configurable per service
+- overridable per association
+
+Adaptive thresholding may come later, but the first implementation should use explicit configured thresholds.
+
+### Keep-whole classification
+
+Even when the mode is enabled, some packets should remain whole.
+
+At minimum, v1 should support keeping these whole:
+
+- packets below the segmentation threshold
+- explicitly classified control-sensitive packets
+- packets on associations or services where operator policy says to remain whole
 
 This is especially important for flagship use cases such as:
+
 - WireGuard over Transitloom
 
 ---
 
-## Sender-side model
+## Sender model
 
-The sender-side pipeline is:
+For each eligible payload packet:
 
-1. choose or confirm the eligible WAN set using existing path-selection logic
-2. classify the packet as segmented-eligible or whole-packet-only
-3. determine effective segment sizing from current path MTU constraints
-4. segment the original payload packet into Transitloom transport segments
-5. assign segments across WANs using weighted scheduling
-6. optionally add FEC/parity segments if enabled
-7. transmit segments across the chosen WAN set
-8. expose operator-visible runtime statistics
+1. existing Transitloom scheduler chooses the eligible WAN/path set
+2. sender confirms segmented mode is still allowed
+3. sender computes effective segment size from current path MTU constraints
+4. sender segments the original payload packet into Transitloom transport segments
+5. sender assigns segments across WANs using weighted scheduling
+6. sender transmits segments
+7. sender records operator-visible runtime statistics
 
-### Important note
+### Important architectural rule
 
 The existing scheduler should still determine the **eligible WAN/path set**.
 
@@ -198,19 +235,59 @@ This is a hybrid model:
 - existing scheduler chooses the allowed stable set
 - segmented mode decides how to distribute segments inside that set
 
+This mode does **not** replace the existing scheduler.
+
 ---
 
-## Receiver-side model
+## Packet identity model
 
-The receiver-side pipeline is:
+Original packet identity must be scoped to:
 
-1. identify the original packet via packet ID
-2. accept segments into a bounded reassembly buffer
-3. reorder segments within a configurable reorder window
-4. reassemble the original packet if all required data arrives in time
-5. emit the reconstructed original payload packet upward
-6. discard incomplete or irrecoverable packets after timeout or pressure limits
-7. expose operator-visible completion/drop/reorder statistics
+- association
+- direction
+- sender epoch/session
+- packet sequence within that scope
+
+This is the recommended packet identity model for v1.
+
+### Why this scope exists
+
+This scope avoids:
+
+- restart ambiguity
+- accidental packet ID reuse across opposite directions
+- stale incomplete packets surviving sender restart confusion
+
+### Sender restart rule
+
+When sender epoch changes:
+
+- receiver must immediately discard incomplete packets from the old sender epoch
+
+This keeps reassembly semantics clean and bounded.
+
+---
+
+## Segment header expectations
+
+This document does not lock the final wire format yet, but the transport header must be able to represent at least:
+
+- mode/version
+- association or path context sufficient for reassembly scope
+- sender epoch/session
+- original packet ID
+- segment index
+- segment count
+- original payload length
+- flags indicating whether parity/FEC is present if enabled
+
+### Integrity for v1
+
+For v1:
+
+- segment headers should rely on the **outer secure Transitloom transport layer** for integrity/authentication
+
+Additional per-segment integrity fields may be introduced later if needed, but should not be required for the first implementation phase.
 
 ---
 
@@ -218,37 +295,61 @@ The receiver-side pipeline is:
 
 Segment sizing must be **MTU-aware from day one**.
 
-This means the sender must account for:
+The sender must account for:
 
-- smallest currently usable effective path MTU in the selected WAN set
+- smallest usable path MTU in the currently selected WAN set
 - Transitloom segment header overhead
-- any optional parity/FEC overhead if enabled
+- any optional FEC overhead if enabled later
 
-Segment sizing should not assume one global fixed payload size unless that size is derived safely from the currently eligible WAN set.
+Segment sizing should not assume one global fixed payload size unless that size is safely derived from the currently eligible WAN set.
 
-This prevents segmentation behavior that would otherwise create downstream MTU problems.
+This is required, not optional.
 
 ---
 
 ## Segment distribution model
 
-Segments should not be assigned equally by default.
+Segments should not be distributed equally by default.
 
 Instead, assignment should be **weighted** by a combination of:
 
 - configured capacity hints
-- measured effective throughput / current usable capacity
+- measured effective throughput / usable capacity
 - current measured path quality
 - stability of the paths in the selected set
 
-### Dynamic adjustment
+### Weight update cadence
+
+Weights should not be recomputed for every segment.
+
+Instead, weights should update per **short scheduling window**.
+
+This keeps behavior more stable and avoids excessive jitter or complexity.
+
+### Degraded-but-not-dead paths
 
 If one WAN becomes slower but is not failed, the sender should:
+
 - reduce its weight dynamically
 - not necessarily remove it immediately
-- continue bounded operation without full failover unless higher-level policy decides otherwise
+- continue bounded operation unless higher-level policy decides otherwise
 
 This mode is intended for **stable** WAN sets, but not necessarily equal WANs.
+
+---
+
+## Receiver model
+
+The receiver-side pipeline is:
+
+1. parse segment header
+2. identify the original packet using packet ID scope
+3. place segment into bounded reassembly buffer
+4. reorder segments within configurable reorder window
+5. reconstruct the original packet if enough data arrives in time
+6. emit the reconstructed original payload packet upward
+7. if incomplete, timeout or pressure handling drops the packet
+8. update operator-visible observability
 
 ---
 
@@ -265,7 +366,7 @@ Reassembly must be:
 
 Timeout should be **adaptive**, based on measured path spread and current observed behavior.
 
-It should not be a single hardcoded fixed timeout if better bounded adaptation is possible.
+It should not be a single fixed hardcoded timeout if bounded adaptation is possible.
 
 ### Reorder window
 
@@ -275,58 +376,122 @@ This window exists to tolerate stable-but-not-identical paths without unbounded 
 
 ---
 
+## Reassembly bounds
+
+Reassembly must be bounded by all three of these:
+
+- **max incomplete packets per association**
+- **max bytes per association**
+- **global max reassembly bytes**
+
+This provides:
+
+- fairness per association
+- global memory protection
+- bounded behavior under pressure
+
+All three bounds should be considered required in the design.
+
+---
+
 ## Pressure handling
 
-When reassembly pressure becomes too high, the receiver should:
+When reassembly pressure becomes too high, the immediate v1 pressure response should be:
 
 - **drop oldest incomplete packets first**
 
-This is the initial explicit pressure policy.
+This is the first explicit pressure policy.
 
 Why:
 - it bounds memory growth
 - it is operationally simple
-- it avoids requiring v1 mode-switch behavior in the first implementation
+- it avoids requiring forced mode-switch behavior in the first implementation
 
-Future refinements may add broader pressure-aware behavior, but v1 pressure handling should remain simple and explicit.
+### Sustained pressure behavior
+
+If pressure remains sustained:
+
+- raise an operator-visible **degraded state**
+- recommend fallback to conservative whole-packet mode
+
+The first implementation should **not** automatically force fallback purely from sustained pressure unless later policy work explicitly adds that behavior.
 
 ---
 
 ## Loss handling
 
-If one required segment is lost or too late, the original packet cannot be emitted unless sufficient repair data exists.
+If one required segment is lost or too late, the original packet cannot be emitted unless enough repair data exists.
 
-### Initial behavior baseline
+### Initial baseline
 
-The first minimal mode should support:
+The first phase should support:
+
 - dropping the original packet when reassembly fails
 - relying on upper-layer recovery when repair is unavailable
 
-### Optional FEC
+### Absent vs failed data
 
-FEC should be:
-- optional
-- encouraged
-- not required for the first minimal implementation
+This mode must preserve the distinction between:
 
-That means the long-term design should support parity/redundancy, but the system should also remain meaningful without requiring FEC for the initial implementation.
+- absent measurement or absent repair
+- explicit failed repair or failed reassembly
+
+These are not the same thing and should not be collapsed in observability or policy.
 
 ---
 
-## FEC model direction
+## FEC direction
 
-FEC is not required to define the mode, but the mode should be designed so that FEC can be added naturally.
+### Long-term direction
 
-When enabled, FEC/parity should:
-- be explicitly configured
-- add observable overhead
-- expose recovery statistics
-- remain bounded
+The intended future FEC family is:
 
-At minimum, future observability should distinguish:
-- packets completed without repair
-- packets completed with repair
-- packets unrecoverable even with parity present
+- **Reed-Solomon style block coding**
+
+### Coding granularity
+
+The intended coding window is:
+
+- across **multiple original packets**
+- not just within one original packet’s segment set
+
+This is a significant capability and should be treated as a later implementation phase.
+
+### Implementation recommendation
+
+Even though the design direction includes multi-packet FEC, implementation should be phased.
+
+---
+
+## Recommended implementation phases
+
+### Phase 1 — segmented aggregation baseline
+
+The first implementation phase should include:
+
+- explicit transport header
+- original-packet segmentation
+- weighted multi-WAN segment assignment
+- MTU-aware segment sizing
+- bounded receiver reassembly
+- adaptive timeout
+- configurable reorder window
+- oldest-incomplete drop under pressure
+- observability for weights / completion / drops / reorder / pressure
+- mode entry/exit behavior without FEC
+
+### Phase 2 — optional block-coded FEC extension
+
+The later implementation phase should include:
+
+- optional Reed-Solomon style coding
+- coding windows spanning multiple original packets
+- repair/recovery logic
+- FEC counters and visibility
+- coding block timeout/flush behavior
+- explicit operator controls for FEC parameters
+
+This is the recommended engineering decomposition.
 
 ---
 
@@ -336,19 +501,27 @@ This mode must expose enough state that operators can understand whether it is h
 
 At minimum, status surfaces should show:
 
-- whether segmented aggregation mode is active
+- whether segmented mode is active
+- why it is active or inactive
+- why a packet was segmented or kept whole
 - the eligible WAN/path set
 - per-WAN segment weights
 - packet completion count
 - packet drop count
 - timeout-related drop count
 - pressure-related drop count
-- reorder / wait behavior
+- reorder statistics
+- degraded-state indicator
+- recommendation to fall back if persistent pressure exists
 
-If FEC is enabled, status should also show:
+### Later FEC observability
+
+If FEC is enabled later, status should also show:
+
 - parity overhead
 - repaired packet count
 - unrecoverable packet count
+- coding window statistics
 
 This mode should be explainable, not opaque.
 
@@ -359,62 +532,41 @@ This mode should be explainable, not opaque.
 At minimum, the mode should support operator control over:
 
 - enable/disable of segmented aggregation mode
-- per-service or per-association activation
+- per-service activation
+- per-association override
 - segmentation threshold
 - reorder window
 - reassembly pressure limits
-- FEC enablement and basic redundancy settings
-- observability detail level if needed
+- degraded-state reporting
+- later FEC enablement and basic redundancy settings
 
 Association-level override should be allowed.
 
 ---
 
-## Recommended v1 implementation phases
+## Suggested operator-visible language
 
-This mode is large enough that implementation should be phased.
-
-### Phase 1 — segmented aggregation baseline
-- explicit transport header
-- original-packet segmentation
-- weighted multi-WAN segment assignment
-- MTU-aware segment sizing
-- bounded receiver reassembly
-- adaptive timeout
-- configurable reorder window
-- oldest-incomplete drop under pressure
-- observability for weights / completion / drops / reorder / pressure
-
-### Phase 2 — optional FEC enhancement
-- optional parity segments
-- recovery counters
-- bounded repair logic
-- operator controls for redundancy
-
-This document describes the mode direction; initial implementation should likely begin with Phase 1.
-
----
-
-## Suggested status language
-
-Operator-visible status should avoid vague language.
+Operator-visible status should avoid vague wording.
 
 Preferred phrasing patterns:
 
 - `segmented-aggregation: active`
-- `eligible-wan-set: stable`
+- `segmented-aggregation: inactive (stability not met)`
 - `segment-weight[path-X]: ...`
+- `packet classification: kept whole (control)`
+- `packet classification: segmented`
 - `reassembly: pressure drop`
-- `packet completion: ...`
-- `packet unrecoverable: ...`
-- `fec: enabled/disabled`
+- `reassembly: timeout drop`
+- `mode state: degraded`
+- `fallback recommendation: whole-packet mode`
 
 Avoid vague summaries like:
-- “health good”
-- “bonding active”
-- “optimized”
 
-The mode should be inspectable and honest.
+- `health good`
+- `bonding active`
+- `optimized`
+
+This mode should be inspectable and honest.
 
 ---
 
@@ -426,25 +578,28 @@ Because this mode adds Transitloom transport metadata and receiver reassembly be
 - segment identity must be explicit
 - incomplete and duplicate segment handling must be bounded
 - reassembly buffers must not grow unbounded
+- stale sender epochs must be discarded explicitly
 - observability must not overclaim success under stale or missing data
 
-These concerns should be addressed in the later implementation tasks and detailed transport spec.
+These concerns should be addressed in later implementation tasks and detailed transport design work.
 
 ---
 
-## Open items for future detailed spec work
+## Open items for later detailed design
 
 This document establishes direction, but later detailed design still needs to define:
 
-- exact transport header format
-- exact packet ID and segment numbering scheme
+- exact segment wire format
+- exact sequence numbering and packet ID encoding
 - exact weighted segment scheduler algorithm
 - exact adaptive timeout formula
-- exact reassembly buffer limits
-- exact FEC/parity format if enabled
-- exact packet classification rules for “keep whole”
-- exact mode-selection and recommendation thresholds
-- exact observability field names and report format
+- exact reorder window defaults and bounds
+- exact reassembly memory defaults and bounds
+- exact degraded-state thresholds and fallback recommendation logic
+- exact Reed-Solomon coding parameters and block structure
+- exact packet classification rules for keep-whole traffic
+- exact mode recommendation thresholds
+- exact observability field names and report structures
 
 ---
 
@@ -453,12 +608,18 @@ This document establishes direction, but later detailed design still needs to de
 Stable-link segmented aggregation mode is an explicit, advanced, non-default Transitloom dataplane mode for stable multi-WAN environments.
 
 It exists to provide true multi-WAN bandwidth aggregation by:
+
 - segmenting eligible original payload packets
 - distributing segments across stable eligible WANs using weighted scheduling
 - reassembling the original packet at the receiver
-- handling timeout, reorder, and pressure explicitly
+- handling timeout, reorder, restart, and pressure explicitly
 - exposing enough runtime state for operators to understand what is happening
 
 It should be built as a separate mode, not as a silent extension of conservative whole-packet behavior.
+
+The recommended engineering path is:
+
+- **Phase 1:** segmented aggregation baseline without FEC
+- **Phase 2:** optional Reed-Solomon style coding across multiple original packets
 
 ---
